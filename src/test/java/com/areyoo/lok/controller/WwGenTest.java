@@ -12,15 +12,16 @@ import java.lang.reflect.Type;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.util.ObjectUtils;
-
 
 /**
  * @author xusong
@@ -44,6 +45,11 @@ class WwGenTest {
     private String serviceName = "";
 
     private Boolean isSuperclass = false;
+
+    /**
+     * 常用的 Exception
+     */
+    private Class importException = Exception.class;
 
     @Test
     public void genTest() throws Exception {
@@ -81,15 +87,32 @@ class WwGenTest {
         return "";
     }
 
+    private Boolean isInit;
     private void genCode(Class myClass, Boolean isSuperclass) throws Exception {
+        genCode(myClass, isSuperclass, true);
+        genCode(myClass, isSuperclass, false);
+    }
+
+    private void genCode(Class myClass, Boolean isSuperclass, Boolean init) throws Exception {
         // 生成测试代码
         if ("java.lang.Object".equals(myClass.getTypeName())) {
             return;
         }
+        if (init) {
+            importSet = new HashSet<>(16);
+            defaultMap = new HashMap<>(16);
+        }
+        isInit = init;
         this.isSuperclass = isSuperclass;
         String name = getType(myClass.getName());
         if ("".equals(serviceName)) {
             serviceName = name.substring(0, 1).toLowerCase() + name.substring(1);
+        }
+
+        List<String> importList = new ArrayList<>(importSet);
+        Collections.sort(importList);
+        for (String importStr : importList) {
+            println(importStr);
         }
 
         Field[] fields = myClass.getDeclaredFields();
@@ -99,18 +122,18 @@ class WwGenTest {
 
         Map<String, List<String>> map = new HashMap<>(16);
 
-        System.out.println("class " + name + "Test {");
+        println("class " + name + "Test {");
 
-        System.out.println("@InjectMocks");
-        System.out.println("private " + myClass.getSimpleName() + " " + serviceName + ";");
-        System.out.println("");
+        println("@InjectMocks");
+        println("private " + myClass.getSimpleName() + " " + serviceName + ";");
+        println("");
 
         int number = 0;
         for (Field service : fields) {
             if (service.getAnnotations().length > 0) {
-                System.out.println("@Mock");
-                System.out.println("private " + service.getType().getSimpleName() + " " + service.getName() + ";");
-                System.out.println("");
+                println("@Mock");
+                println("private " + service.getType().getSimpleName() + " " + service.getName() + ";");
+                println("");
 
                 for (Method serviceMethod : service.getType().getDeclaredMethods()) {
                     String methodStr = service.getName() + "." + serviceMethod.getName() + "(";
@@ -126,19 +149,30 @@ class WwGenTest {
             }
         }
 
-        Map<String, List<List<String>>> whenMap = new HashMap<>(16);
+        Map<String, Set<List<String>>> whenMap = new HashMap<>(16);
+        Map<String, Set<String>> whenMethod = new HashMap<>(16);
+        for (Method method : myClass.getDeclaredMethods()) {
+            whenMap.put(method.getName(), new HashSet<>(10));
+            whenMethod.put(method.getName(), new HashSet<>(10));
+        }
         String methodName = "";
         if (!"".equals(fileContent)) {
             for (String line : lineList) {
+                if (line.indexOf("(") == -1) {
+                    continue;
+                }
                 if (line.indexOf("private") > 0 || line.indexOf("public") > 0 || line.indexOf("protected") > 0) {
-                    for (Method method : myClass.getMethods()) {
-                        if (line.indexOf(method.getName() + "(") > 0) {
+                    for (Method method : myClass.getDeclaredMethods()) {
+                        if (line.indexOf(" " + method.getName() + "(") > 0) {
                             methodName = method.getName();
-
-                            whenMap.put(methodName, new ArrayList<>(10));
                         }
                     }
                 } else {
+                    for (Method method : myClass.getDeclaredMethods()) {
+                        if (line.indexOf(" " + method.getName() + "(") > 0) {
+                            whenMethod.get(methodName).add(method.getName());
+                        }
+                    }
                     for (Map.Entry<String, List<String>> entry : map.entrySet()) {
                         if (line.indexOf(entry.getKey()) > 0) {
                             whenMap.get(methodName).add(entry.getValue());
@@ -146,17 +180,28 @@ class WwGenTest {
                     }
                 }
             }
+            for (Map.Entry<String, Set<String>> entry : whenMethod.entrySet()) {
+                for (String key : entry.getValue()) {
+                    whenMap.get(entry.getKey()).addAll(whenMap.get(key));
+                }
+            }
         }
 
         methods(myClass, whenMap);
-        System.out.println("}");
+        println("}");
 
         map.forEach((key, value) -> {
             for (String item : value) {
-                System.out.println(item);
-                System.out.println("");
+                println(item);
+                println("");
             }
         });
+    }
+
+    private void println(String item) {
+        if (!isInit) {
+            System.out.println(item);
+        }
     }
 
     private String getWhen(Method serviceMethod, int number, String serviceName) throws Exception {
@@ -195,9 +240,7 @@ class WwGenTest {
                     Class realType = (Class) type;
                     tmpList.add(getDefaultVal(realType));
 
-                    if (isVo(realType)) {
-                        defaultMap.put(realType.getName(), getAttr(realType));
-                    }
+                    isVo(realType);
                 } else if (type instanceof ParameterizedType) {
                     tmpList.add(getDefaultVal(type.getTypeName()));
                 }
@@ -226,9 +269,7 @@ class WwGenTest {
                     Class realType = (Class) type;
                     tmpList.add(realType.getSimpleName());
 
-                    if (isVo(realType)) {
-                        defaultMap.put(realType.getName(), getAttr(realType));
-                    }
+                    isVo(realType);
                 } else if (type instanceof ParameterizedType) {
                     tmpList.add(getDefType(getType(type.getTypeName()), type));
                 }
@@ -239,12 +280,13 @@ class WwGenTest {
     }
 
     Map<String, String> defaultMap = new HashMap<>(16);
-    private void methods(Class myClass, Map<String, List<List<String>>> whenMap) throws Exception {
+    private void methods(Class myClass, Map<String, Set<List<String>>> whenMap) throws Exception {
         Method[] publicMethod = myClass.getMethods();
         Method[] allMethod = myClass.getDeclaredMethods();
         List<Method> resultList = new ArrayList<>(publicMethod.length);
         Collections.addAll(resultList, publicMethod);
 
+        Map<String, Integer> methodCount = new HashMap<>();
         for (Method method : allMethod) {
             Class[] classes = method.getParameterTypes();
             Parameter[] parameter = method.getParameters();
@@ -255,25 +297,30 @@ class WwGenTest {
 
             List<String> parameterType = getMethodParameterTypes(method);
 
-            System.out.println("");
-            System.out.println("/**\n" +
+            if (methodCount.get(method.getName()) == null) {
+                methodCount.put(method.getName(), 1);
+            } else {
+                methodCount.put(method.getName(), methodCount.get(method.getName()) + 1);
+            }
+
+            println("");
+            println("/**\n" +
                     "     * " + method.getName() + "\n" +
                     "                    *\n" +
                     "     * @throws Exception\n" +
                     "                    */");
-            System.out.println("@Test");
-            System.out.println("public void " + method.getName() + "Test() throws Exception {");
+            println("@Test");
+            println("public void " + method.getName() + getMethodCountName(methodCount.get(method.getName())) + "Test() throws Exception {");
             for (int i = 0; i < classes.length; i++) {
                 // 取得每个参数的初始化
                 if (isVo(classes[i])) {
                     String setLine = parameterType.get(i) + " " + parameter[i].getName()  + " = get" +
                             getType(classes[i].getTypeName()) + "();";
-                    System.out.println(setLine);
-                    defaultMap.put(classes[i].getName(), getAttr(classes[i]));
+                    println(setLine);
                 } else {
                     String setLine = parameterType.get(i) + " " + parameter[i].getName()  + " = " +
                             getDefaultVal(classes[i].getTypeName()) + ";";
-                    System.out.println(setLine);
+                    println(setLine);
                 }
                 meta.add(parameter[i].getName());
                 metaType.add(getType(classes[i].getTypeName()) + ".class");
@@ -284,7 +331,7 @@ class WwGenTest {
             String defString = "";
             String assertString = "";
             if ("void".equals(returnType)) {
-                System.out.println("String error = null;");
+                println("String error = null;");
             } else if (returnType.indexOf("java.util.List") == 0) {
                 defString = "Object result = ";
                 assertString = "Assert.assertTrue(result != null && result.toString().indexOf(\"[\") == 0);";
@@ -296,62 +343,82 @@ class WwGenTest {
                 }
                 assertString = "Assert.assertTrue(result != null);";
             }
+            String joinStr = metaType.size() > 0 ? ", " : "";
             if (!resultList.contains(method)) {
 
                 String superclassStr = isSuperclass ? ".getSuperclass()" : "";
-                String initMethod = "Method method = " + serviceName + ".getClass()" + superclassStr + ".getDeclaredMethod(\"" + method.getName() + "\", "
+                String initMethod = "Method method = " + serviceName + ".getClass()" + superclassStr + ".getDeclaredMethod(\"" + method.getName() + "\"" + joinStr
                         + String.join(", ", metaType) + ");";
-                System.out.println(initMethod);
-                System.out.println("method.setAccessible(true);");
-                System.out.println(defString + "method.invoke(" + serviceName + ", " + String.join(", ", meta) + ");");
+                println(initMethod);
+                println("method.setAccessible(true);");
+                println(defString + "method.invoke(" + serviceName + joinStr + String.join(", ", meta) + ");");
 
             } else {
-                System.out.println(defString + serviceName + "." + method.getName() + "(" + String.join(", ", meta) + ");");
+                println(defString + serviceName + "." + method.getName() + "(" + String.join(", ", meta) + ");");
             }
 
+            Boolean add = false;
             for (int i = 0; i < classes.length; i++) {
                 if ("java.util.List".equals(parameter[i].getType().getTypeName()) || "java.util.Set".equals(parameter[i].getType().getTypeName())) {
-                    System.out.println(parameter[i].getName() + ".add(" + getDefaultVal(genericParameterTypes[i]) + ");");
+                    println(parameter[i].getName() + ".add(" + getDefaultVal(genericParameterTypes[i]) + ");");
+                    add = true;
                 } else if ("java.util.Map".equals(parameter[i].getType().getTypeName())) {
-                    System.out.println(parameter[i].getName() + ".put(" + getDefaultVal(genericParameterTypes[i]) + ");");
+                    println(parameter[i].getName() + ".put(" + getDefaultVal(genericParameterTypes[i]) + ");");
+                    add = true;
                 }
             }
-            List<List<String>> whenList = whenMap.get(method.getName());
-            if (whenList != null) {
+            if (add) {
+                if (!resultList.contains(method)) {
+                    println("method.invoke(" + serviceName + joinStr + String.join(", ", meta) + ");");
+                } else {
+                    println(serviceName + "." + method.getName() + "(" + String.join(", ", meta) + ");");
+                }
+            }
+
+            Set<List<String>> whenList = whenMap.get(method.getName());
+            if (whenList != null && !whenList.isEmpty()) {
                 for (List<String> oneList : whenList) {
-                    System.out.println("");
-                    System.out.println(String.join("\n", oneList));
+                    println("");
+                    println(String.join("\n", oneList));
                 }
 
                 if (!resultList.contains(method)) {
-                    System.out.println("method.invoke(" + serviceName + ", " + String.join(", ", meta) + ");");
-
+                    println("method.invoke(" + serviceName + joinStr + String.join(", ", meta) + ");");
                 } else {
-                    System.out.println(serviceName + "." + method.getName() + "(" + String.join(", ", meta) + ");");
+                    println(serviceName + "." + method.getName() + "(" + String.join(", ", meta) + ");");
                 }
             }
 
             if ("void".equals(returnType)) {
-                System.out.println("try {");
+                println("try {");
                 // 定义常用的 Exception
-                System.out.println("} catch (Exception e) {");
-                System.out.println("error = e.getMessage();");
-                System.out.println("}");
-                System.out.println("Assert.assertTrue(error == null);");
+                println("} catch (" + importException.getSimpleName() + " e) {");
+                println("error = e.getMessage();");
+                println("}");
+                println("Assert.assertTrue(error == null);");
             } else {
-                System.out.println(assertString);
+                println(assertString);
             }
-            System.out.println("}");
+            println("}");
         }
 
         for (Map.Entry<String, String> entry : defaultMap.entrySet()) {
             String localType = getType(entry.getKey());
-            System.out.println("");
+            println("");
             String fnStr = "private " + localType + " get" + localType
                     + "() {\nString json = \""
                     + entry.getValue() + "\";\n" + localType + " vo = new Gson().fromJson(json, " + localType + ".class);\nreturn vo;\n}";
 
-            System.out.println(fnStr);
+            println(fnStr);
+        }
+    }
+
+    private String getMethodCountName(Integer count) {
+        String[] arr = {"", "Two", "Three", "Four"};
+        if (count >= 4) {
+            return "";
+        } else {
+            return arr[count];
         }
     }
 
@@ -373,9 +440,13 @@ class WwGenTest {
         return getMethods(myClass, Object.class);
     }
 
-    private Boolean isVo(Class myClass) {
-        List<Method> listMethod = getMethods(myClass);
+    private Boolean isVo(Class myClass) throws Exception {
+        setImport(myClass.getName());
+        if (myClass.getName().length() >= 5 && "java.".equals(myClass.getName().substring(0, 5))) {
+            return false;
+        }
 
+        List<Method> listMethod = getMethods(myClass);
         String defaultValue = getDefaultValue(myClass.getName());
         if (!"null".equals(defaultValue)) {
             return false;
@@ -384,10 +455,18 @@ class WwGenTest {
         for (Method method : listMethod) {
             Class[] parameter = method.getParameterTypes();
             if (method.getName().length() > 3 && "set".equals(method.getName().substring(0, 3)) && parameter.length == 1) {
+                defaultMap.put(myClass.getName(), getAttr(myClass));
                 return true;
             }
         }
         return false;
+    }
+
+    Set<String> importSet = new HashSet<>(16);
+    private void setImport(String name) {
+        if (isInit && name.indexOf("[") == -1) {
+            importSet.add("import " + name + ";");
+        }
     }
 
     private String getAttr(Class myClass) throws Exception {
@@ -409,35 +488,6 @@ class WwGenTest {
         for (int i = 0; i < genericParameterTypes.length; i++) {
             Type genericType = genericParameterTypes[i];
             list.add(getDefType(getType(genericType.getTypeName()), genericType));
-        }
-        return list;
-    }
-
-    private List<String> getMethodParameterTypes2(Method method) throws Exception {
-        Type[] genericParameterTypes = method.getGenericParameterTypes();
-        Class[] parameter = method.getParameterTypes();
-        List<String> list = new ArrayList<>(genericParameterTypes.length);
-        for (int i = 0; i < genericParameterTypes.length; i++) {
-            Type genericType = genericParameterTypes[i];
-            if (genericType instanceof ParameterizedType) {
-                ParameterizedType parameterizedType = (ParameterizedType) genericType;
-
-                Type[] types = parameterizedType.getActualTypeArguments();
-                List<String> tmpList = new ArrayList<>(10);
-                for (Type type : types) {
-                    if (type instanceof Class) {
-                        Class realType = (Class) type;
-                        tmpList.add(getType(realType.getName()));
-
-                        if (isVo(realType)) {
-                            defaultMap.put(realType.getName(), getAttr(realType));
-                        }
-                    }
-                }
-                list.add(getType(parameter[i].getTypeName()) + "<" + String.join(", ", tmpList) + ">");
-            } else {
-                list.add(getType(parameter[i].getTypeName()));
-            }
         }
         return list;
     }
@@ -506,16 +556,23 @@ class WwGenTest {
                 result = "true";
                 break;
             case "java.util.List":
+                setImport("java.util.ArrayList");
                 result = "new ArrayList<>(10)";
                 break;
             case "java.util.Map":
+                setImport("java.util.HashMap");
                 result = "new HashMap<>(16)";
                 break;
             case "java.util.Set":
+                setImport("java.util.HashSet");
                 result = "new HashSet<>(16)";
                 break;
             default:
-                result = "get" + getType(name) + "()";
+                if (defaultMap.get(name) != null) {
+                    result = "get" + getType(name) + "()";
+                } else {
+                    result = "new " + getType(name) + "()";
+                }
         }
         if (indexArr > 0) {
             switch (name) {

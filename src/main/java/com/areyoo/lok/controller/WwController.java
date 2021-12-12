@@ -57,9 +57,20 @@ public class WwController extends BaseController {
 
     private TestVo getTestVo(TestVo vo) {
         wwService.indexMap("mess");
-        wwService.indexMap2("mess2");
 	    vo.setCost(new BigDecimal("1"));
+        emptyInput();
 	    return vo;
+    }
+
+    private StringBuffer emptyInput() {
+        StringBuffer stringBuffer = new StringBuffer();
+        stringBuffer.append(wwService.indexMap2("mess2"));
+        return stringBuffer;
+    }
+
+    private StringBuffer emptyInput(StringBuffer stringBuffer) {
+        stringBuffer.append(wwService.indexMap2("mess2"));
+        return stringBuffer;
     }
 
     private TestVo getTestVo2(TestVo vo, Boolean hao, Boolean isYes, List<TestVo> list, Map<String, String> map, Map<String, List<String>> map2) {
