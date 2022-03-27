@@ -19,7 +19,6 @@ import java.util.Set;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.util.ObjectUtils;
 
@@ -28,12 +27,6 @@ import org.springframework.util.ObjectUtils;
  */
 @ExtendWith(MockitoExtension.class)
 class WwGenTest {
-    /**
-     *
-     */
-    @InjectMocks
-    private WwController wwController;
-
     /**
      * java文件夹， 用于生成测试的 when代码 可以自定义 比如 D:/java/lok/target/test-classes/../../src/
      */
@@ -46,10 +39,20 @@ class WwGenTest {
 
     private Boolean isSuperclass = false;
 
+    // 是否生成私有方法的单元测试
+    private Boolean genPrivateMethod = false;
+
+    // 是否使用json 初始化对象
+    private Boolean useJson = false;
+
     /**
      * 常用的 Exception
      */
     private Class importException = Exception.class;
+
+    private String fileContent = "";
+
+    private String importAny = "org.mockito.ArgumentMatchers";
 
     @Test
     public void genTest() throws Exception {
@@ -58,10 +61,10 @@ class WwGenTest {
             filePath = this.getClass().getResource("/").toString().substring(6) + "../../src/";
         }
         // 生成当前类的单元测试
-        genCode(wwController.getClass(), false);
+        genCode(WwController.class, false);
 
         // 生成父类的单元测试
-        genCode(wwController.getClass().getSuperclass(), true);
+        // genCode(WwController.class.getSuperclass(), true);
     }
 
     private static String getAbsolutePath(Class myClass) {
@@ -109,16 +112,19 @@ class WwGenTest {
             serviceName = name.substring(0, 1).toLowerCase() + name.substring(1);
         }
 
+        setImport("org.mockito.InjectMocks");
+        setImport("org.mockito.Mock");
         List<String> importList = new ArrayList<>(importSet);
         Collections.sort(importList);
         for (String importStr : importList) {
             println(importStr);
         }
+        println("");
 
         Field[] fields = myClass.getDeclaredFields();
 
         List<String> lineList = readFileContent(getAbsolutePath(myClass));
-        String fileContent = String.join("\n", lineList);
+        fileContent = String.join("\n", lineList);
 
         Map<String, List<String>> map = new HashMap<>(16);
 
@@ -190,12 +196,14 @@ class WwGenTest {
         methods(myClass, whenMap);
         println("}");
 
-        map.forEach((key, value) -> {
-            for (String item : value) {
-                println(item);
-                println("");
-            }
-        });
+        if (fileContent.equals("")) {
+            map.forEach((key, value) -> {
+                for (String item : value) {
+                    println(item);
+                    println("");
+                }
+            });
+        }
     }
 
     private void println(String item) {
@@ -288,6 +296,10 @@ class WwGenTest {
 
         Map<String, Integer> methodCount = new HashMap<>();
         for (Method method : allMethod) {
+            if (!resultList.contains(method) && !genPrivateMethod) {
+                continue;
+            }
+
             Class[] classes = method.getParameterTypes();
             Parameter[] parameter = method.getParameters();
             Type[] genericParameterTypes = method.getGenericParameterTypes();
@@ -298,7 +310,7 @@ class WwGenTest {
             List<String> parameterType = getMethodParameterTypes(method);
 
             if (methodCount.get(method.getName()) == null) {
-                methodCount.put(method.getName(), 1);
+                methodCount.put(method.getName(), 0);
             } else {
                 methodCount.put(method.getName(), methodCount.get(method.getName()) + 1);
             }
@@ -405,10 +417,16 @@ class WwGenTest {
         for (Map.Entry<String, String> entry : defaultMap.entrySet()) {
             String localType = getType(entry.getKey());
             println("");
-            String fnStr = "private " + localType + " get" + localType
-                    + "() {\nString json = \""
-                    + entry.getValue() + "\";\n" + localType + " vo = new Gson().fromJson(json, " + localType + ".class);\nreturn vo;\n}";
-
+            String fnStr = null;
+            if (useJson) {
+                fnStr = "private " + localType + " get" + localType
+                        + "() {\nString json = \""
+                        + entry.getValue() + "\";\n" + localType + " vo = new Gson().fromJson(json, " + localType + ".class);\nreturn vo;\n}";
+            } else {
+                fnStr = "private " + localType + " get" + localType
+                        + "() {\n" + localType + " vo = new " + localType + "();\n"
+                        + entry.getValue() + "return vo;\n}";
+            }
             println(fnStr);
         }
     }
@@ -455,7 +473,7 @@ class WwGenTest {
         for (Method method : listMethod) {
             Class[] parameter = method.getParameterTypes();
             if (method.getName().length() > 3 && "set".equals(method.getName().substring(0, 3)) && parameter.length == 1) {
-                defaultMap.put(myClass.getName(), getAttr(myClass));
+                defaultMap.put(myClass.getName(), useJson ? getAttr(myClass) : getVo(myClass));
                 return true;
             }
         }
@@ -482,6 +500,17 @@ class WwGenTest {
         return "{" + String.join(",", result) + "}";
     }
 
+    private String getVo(Class myClass) throws Exception {
+        List<String> result = new ArrayList<>(10);
+        for (Method method : getMethods(myClass)) {
+            Class[] parameter = method.getParameterTypes();
+            if (method.getName().length() > 3 && "set".equals(method.getName().substring(0, 3)) && parameter.length == 1 && fileContent.contains("." + method.getName() + "(")) {
+                result.add("vo." + method.getName() + "(" + getDefaultVal(parameter[0].getName())  + ")\n");
+            }
+        }
+        return String.join("", result);
+    }
+
     private List<String> getMethodParameterTypes(Method method) throws Exception {
         Type[] genericParameterTypes = method.getGenericParameterTypes();
         List<String> list = new ArrayList<>(genericParameterTypes.length);
@@ -498,6 +527,7 @@ class WwGenTest {
         if (index > 0) {
             type = type.substring(0, index);
         }
+        setImport(type);
         String[] arr = type.split("[.]");
         if (arr.length > 0) {
             return arr[arr.length - 1] + suffix;
@@ -638,50 +668,61 @@ class WwGenTest {
         String result = null;
         switch (name) {
             case "short":
+                setImport(importAny + ".anyShort");
                 result = "anyShort()";
                 break;
             case "byte":
+                setImport(importAny + ".anyByte");
                 result = "anyByte()";
                 break;
             case "char":
+                setImport(importAny + ".anyChar");
                 result = "anyChar()";
                 break;
             case "long":
             case "java.lang.Long":
+                setImport(importAny + ".anyLong");
                 result = "anyLong()";
                 break;
             case "int":
             case "java.lang.Integer":
+                setImport(importAny + ".anyInt");
                 result = "anyInt()";
                 break;
             case "double":
             case "java.lang.Double":
+                setImport(importAny + ".anyDouble");
                 result = "anyDouble()";
                 break;
             case "float":
             case "java.lang.Float":
+                setImport(importAny + ".anyFloat");
                 result = "anyFloat()";
                 break;
             case "java.lang.String":
+                setImport(importAny + ".anyString");
                 result = "anyString()";
                 break;
             case "java.lang.Boolean":
             case "boolean":
+                setImport(importAny + ".anyBoolean");
                 result = "anyBoolean()";
                 break;
             case "java.util.List":
+                setImport(importAny + ".anyList");
                 result = "anyList()";
                 break;
             case "java.util.Map":
+                setImport(importAny + ".anyMap");
                 result = "anyMap()";
                 break;
             case "java.util.Set":
+                setImport(importAny + ".anySet");
                 result = "anySet()";
                 break;
             case "java.util.Date":
-                result = "new Date()";
-                break;
             default:
+                setImport(importAny + ".any");
                 result = "any()";
         }
         return result;
