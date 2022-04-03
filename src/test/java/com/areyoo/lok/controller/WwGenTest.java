@@ -52,7 +52,7 @@ class WwGenTest {
 
     private String fileContent = "";
 
-    private String importAny = "org.mockito.ArgumentMatchers";
+    private String importAny = "static org.mockito.ArgumentMatchers";
 
     @Test
     public void genTest() throws Exception {
@@ -114,6 +114,9 @@ class WwGenTest {
 
         setImport("org.mockito.InjectMocks");
         setImport("org.mockito.Mock");
+        setImport("org.junit.Assert");
+        setImport("org.junit.jupiter.api.Test");
+        setImport("static org.mockito.Mockito.when");
         List<String> importList = new ArrayList<>(importSet);
         Collections.sort(importList);
         for (String importStr : importList) {
@@ -121,9 +124,9 @@ class WwGenTest {
         }
         println("");
 
-        Field[] fields = myClass.getDeclaredFields();
+        Set<Field> fields = getDeclaredFields(myClass);
 
-        List<String> lineList = readFileContent(getAbsolutePath(myClass));
+        List<String> lineList = readFileContent(myClass);
         fileContent = String.join("\n", lineList);
 
         Map<String, List<String>> map = new HashMap<>(16);
@@ -133,11 +136,11 @@ class WwGenTest {
         println("@InjectMocks");
         println("private " + myClass.getSimpleName() + " " + serviceName + ";");
         println("");
-
         int number = 0;
         for (Field service : fields) {
-            if (service.getAnnotations().length > 0) {
+            if (service.getAnnotations().length > 0 && !service.getType().getName().contains("java.") && service.getType().getName().contains(".")) {
                 println("@Mock");
+                setImport(service.getType().getName());
                 println("private " + service.getType().getSimpleName() + " " + service.getName() + ";");
                 println("");
 
@@ -157,24 +160,26 @@ class WwGenTest {
 
         Map<String, Set<List<String>>> whenMap = new HashMap<>(16);
         Map<String, Set<String>> whenMethod = new HashMap<>(16);
-        for (Method method : myClass.getDeclaredMethods()) {
+        Set<Method> methods = getDeclaredMethods(myClass, true);
+        for (Method method : methods) {
             whenMap.put(method.getName(), new HashSet<>(10));
             whenMethod.put(method.getName(), new HashSet<>(10));
         }
         String methodName = "";
+        myClass.getDeclaredMethods();
         if (!"".equals(fileContent)) {
             for (String line : lineList) {
                 if (line.indexOf("(") == -1) {
                     continue;
                 }
                 if (line.indexOf("private") > 0 || line.indexOf("public") > 0 || line.indexOf("protected") > 0) {
-                    for (Method method : myClass.getDeclaredMethods()) {
+                    for (Method method : methods) {
                         if (line.indexOf(" " + method.getName() + "(") > 0) {
                             methodName = method.getName();
                         }
                     }
                 } else {
-                    for (Method method : myClass.getDeclaredMethods()) {
+                    for (Method method : methods) {
                         if (line.indexOf(" " + method.getName() + "(") > 0) {
                             whenMethod.get(methodName).add(method.getName());
                         }
@@ -204,6 +209,39 @@ class WwGenTest {
                 }
             });
         }
+    }
+
+    private Set<Field> getDeclaredFields(Class myClass) {
+        Set<Field> set = new HashSet<>(15);
+        Set<Type> setType = new HashSet<>(15);
+        for (Field field : myClass.getDeclaredFields()) {
+            set.add(field);
+            setType.add(field.getType());
+        }
+        if (!myClass.getSuperclass().getName().contains("java.")) {
+            for (Field field : getDeclaredFields(myClass.getSuperclass())) {
+                if (!setType.contains(field.getType())) {
+                    set.add(field);
+                    setType.add(field.getType());
+                }
+            }
+        }
+        return set;
+    }
+
+    private Set<Method> getDeclaredMethods(Class myClass, Boolean base) {
+        Method[] methods = myClass.getDeclaredMethods();
+        Set<Method> set = new HashSet<>(15);
+        for (Method method : methods) {
+            if (base || method.toString().contains("public ")) {
+                set.add(method);
+            }
+        }
+
+        if (!myClass.getSuperclass().getName().contains("java.")) {
+            set.addAll(getDeclaredMethods(myClass.getSuperclass(), false));
+        }
+        return set;
     }
 
     private void println(String item) {
@@ -505,7 +543,7 @@ class WwGenTest {
         for (Method method : getMethods(myClass)) {
             Class[] parameter = method.getParameterTypes();
             if (method.getName().length() > 3 && "set".equals(method.getName().substring(0, 3)) && parameter.length == 1 && fileContent.contains("." + method.getName() + "(")) {
-                result.add("vo." + method.getName() + "(" + getDefaultVal(parameter[0].getName())  + ")\n");
+                result.add("vo." + method.getName() + "(" + getDefaultVal(parameter[0].getName())  + ");\n");
             }
         }
         return String.join("", result);
@@ -728,7 +766,8 @@ class WwGenTest {
         return result;
     }
 
-    private static List<String> readFileContent(String fileName) {
+    private static List<String> readFileContent(Class myClass) {
+        String fileName = getAbsolutePath(myClass);
         List<String> sbf = new ArrayList<>(10);
         if (ObjectUtils.isEmpty(fileName)) {
             return sbf;
@@ -742,7 +781,6 @@ class WwGenTest {
                 sbf.add(tempStr);
             }
             reader.close();
-            return sbf;
         } catch (IOException e) {
             e.printStackTrace();
         } finally {
@@ -753,6 +791,9 @@ class WwGenTest {
                     e1.printStackTrace();
                 }
             }
+        }
+        if (!myClass.getSuperclass().getName().contains("java.")) {
+            sbf.addAll(readFileContent(myClass.getSuperclass()));
         }
         return sbf;
     }
