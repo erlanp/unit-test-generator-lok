@@ -17,6 +17,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import com.areyoo.lok.service.api.WwService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -144,7 +145,7 @@ class WwGenTest {
                 println("private " + service.getType().getSimpleName() + " " + service.getName() + ";");
                 println("");
 
-                for (Method serviceMethod : service.getType().getDeclaredMethods()) {
+                for (Method serviceMethod : getDeclaredMethods(service.getType(), true)) {
                     String methodStr = service.getName() + "." + serviceMethod.getName() + "(";
                     Type t = serviceMethod.getAnnotatedReturnType().getType();
                     if (!"void".equals(t.getTypeName()) && ("".equals(fileContent) || fileContent.indexOf(methodStr) > 0)) {
@@ -166,7 +167,6 @@ class WwGenTest {
             whenMethod.put(method.getName(), new HashSet<>(10));
         }
         String methodName = "";
-        myClass.getDeclaredMethods();
         if (!"".equals(fileContent)) {
             for (String line : lineList) {
                 if (line.indexOf("(") == -1) {
@@ -238,9 +238,12 @@ class WwGenTest {
             }
         }
 
-        if (!myClass.getSuperclass().getName().contains("java.")) {
+        if (myClass.getSuperclass() != null && !myClass.getSuperclass().getName().contains("java.")) {
             set.addAll(getDeclaredMethods(myClass.getSuperclass(), false));
+        } else if (myClass.getInterfaces() != null && myClass.getInterfaces().length > 0) {
+            set.addAll(getDeclaredMethods(myClass.getInterfaces()[0], false));
         }
+
         return set;
     }
 
@@ -301,7 +304,7 @@ class WwGenTest {
     }
 
     private String getDefType(Class returnType, Type genericType) throws Exception {
-        return getDefType (getType(returnType.getName()), genericType);
+        return getDefType(getType(returnType.getName()), genericType);
     }
 
     private String getDefType(String returnTypeName, Type genericType) throws Exception {
