@@ -464,6 +464,7 @@ class WwGenTest {
                         + "() {\nString json = \""
                         + entry.getValue() + "\";\n" + localType + " vo = new Gson().fromJson(json, " + localType + ".class);\nreturn vo;\n}";
             } else {
+                setImport(entry.getKey());
                 fnStr = "private " + localType + " get" + localType
                         + "() {\n" + localType + " vo = new " + localType + "();\n"
                         + entry.getValue() + "return vo;\n}";
@@ -639,6 +640,7 @@ class WwGenTest {
                 result = "new HashSet<>(16)";
                 break;
             default:
+                setImport(name);
                 if (defaultMap.get(name) != null) {
                     result = "get" + getType(name) + "()";
                 } else {
