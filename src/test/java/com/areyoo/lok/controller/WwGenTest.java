@@ -41,7 +41,7 @@ class WwGenTest {
     private Boolean isSuperclass = false;
 
     // 是否生成私有方法的单元测试
-    private Boolean genPrivateMethod = false;
+    private Boolean genPrivateMethod = true;
 
     // 是否使用json 初始化对象
     private Boolean useJson = false;
@@ -160,38 +160,52 @@ class WwGenTest {
         }
 
         Map<String, Set<List<String>>> whenMap = new HashMap<>(16);
+
+        // 函数之间的关系
         Map<String, Set<String>> whenMethod = new HashMap<>(16);
+        Map<String, Set<String>> putString = new HashMap<>(16);
         Set<Method> methods = getDeclaredMethods(myClass, true);
+
         for (Method method : methods) {
-            whenMap.put(method.getName(), new HashSet<>(10));
-            whenMethod.put(method.getName(), new HashSet<>(10));
+            whenMap.put(method.getName(), new HashSet<>(15));
+            whenMethod.put(method.getName(), new HashSet<>(15));
+            putString.put(method.getName(), new HashSet<>(15));
         }
         String methodName = "";
         if (!"".equals(fileContent)) {
             for (String line : lineList) {
-                if (line.indexOf("(") == -1) {
+                if (line.trim().length() <= 1) {
                     continue;
                 }
-                if (line.indexOf("private") > 0 || line.indexOf("public") > 0 || line.indexOf("protected") > 0) {
+
+                boolean maybeFunction = (line.indexOf("(") != -1);
+                if (maybeFunction && (line.indexOf("private") > 0 || line.indexOf("public") > 0 || line.indexOf("protected") > 0)) {
                     for (Method method : methods) {
                         if (line.indexOf(" " + method.getName() + "(") > 0) {
                             methodName = method.getName();
                         }
                     }
                 } else {
-                    for (Method method : methods) {
-                        if (line.indexOf(" " + method.getName() + "(") > 0) {
-                            whenMethod.get(methodName).add(method.getName());
+                    if (maybeFunction) {
+                        for (Method method : methods) {
+                            if (!"".equals(methodName) && line.indexOf(" " + method.getName() + "(") > 0) {
+                                whenMethod.get(methodName).add(method.getName());
+                            }
+                        }
+                        for (Map.Entry<String, List<String>> entry : map.entrySet()) {
+                            if (!"".equals(methodName) && line.indexOf(entry.getKey()) > 0) {
+                                whenMap.get(methodName).add(entry.getValue());
+                            }
                         }
                     }
-                    for (Map.Entry<String, List<String>> entry : map.entrySet()) {
-                        if (line.indexOf(entry.getKey()) > 0) {
-                            whenMap.get(methodName).add(entry.getValue());
-                        }
+                    int leftPos = line.indexOf('"');
+                    int rightPos = line.indexOf('"', leftPos + 2);
+                    if (line.indexOf("@") == -1 && leftPos != -1 && rightPos != -1) {
+                        putString.get(methodName).add(line.substring(leftPos, rightPos));
                     }
                 }
             }
-            for (Map.Entry<String, Set<String>> entry : whenMethod.entrySet()) {
+            for (Map.Entry<String, Set<String>> entry : methodMap(whenMethod).entrySet()) {
                 for (String key : entry.getValue()) {
                     whenMap.get(entry.getKey()).addAll(whenMap.get(key));
                 }
@@ -209,6 +223,27 @@ class WwGenTest {
                 }
             });
         }
+    }
+
+    // 复制函数之间的关系
+    private Map<String, Set<String>> methodMap(Map<String, Set<String>> whenMethod) {
+        Map<String, Set<String>> result = new HashMap<>(16);
+        for (Map.Entry<String, Set<String>> entry : whenMethod.entrySet()) {
+            result.put(entry.getKey(), methodSet(entry.getKey(), whenMethod));
+        }
+        return result;
+    }
+
+    private Set<String> methodSet(String key, Map<String, Set<String>> whenMethod) {
+        Set<String> set = whenMethod.get(key);
+        if (set == null || set.isEmpty()) {
+            return new HashSet<>(0);
+        }
+        Set<String> result = new HashSet<>(set);
+        for (String key2 : set) {
+            result.addAll(methodSet(key2, whenMethod));
+        }
+        return result;
     }
 
     private Set<Field> getDeclaredFields(Class myClass) {
