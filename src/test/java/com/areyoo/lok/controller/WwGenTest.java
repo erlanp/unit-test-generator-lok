@@ -10,6 +10,7 @@ import java.lang.reflect.Parameter;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -17,7 +18,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-import com.areyoo.lok.service.api.WwService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -201,10 +201,12 @@ class WwGenTest {
                     int leftPos = line.indexOf('"');
                     int rightPos = line.indexOf('"', leftPos + 2);
                     if (line.indexOf("@") == -1 && leftPos != -1 && rightPos != -1) {
-                        putString.get(methodName).add(line.substring(leftPos, rightPos));
+                        addWord(putString, methodName, line.substring(leftPos + 1, rightPos));
                     }
                 }
             }
+
+            setPutString(putString, methodMap(whenMethod));
             for (Map.Entry<String, Set<String>> entry : methodMap(whenMethod).entrySet()) {
                 for (String key : entry.getValue()) {
                     whenMap.get(entry.getKey()).addAll(whenMap.get(key));
@@ -212,7 +214,7 @@ class WwGenTest {
             }
         }
 
-        methods(myClass, whenMap);
+        methods(myClass, whenMap, putString);
         println("}");
 
         if (fileContent.equals("")) {
@@ -223,6 +225,29 @@ class WwGenTest {
                 }
             });
         }
+    }
+
+    private void setPutString(Map<String, Set<String>> putString, Map<String, Set<String>> whenMethod) {
+        whenMethod.forEach((key, value) -> {
+            if (value.isEmpty()) {
+                return;
+            }
+            for (String method : value) {
+                putString.get(key).addAll(putString.get(method));
+            }
+        });
+    }
+
+    private void addWord(Map<String, Set<String>> putString, String methodName, String str) {
+        for (char c : str.toCharArray()) {
+            if ("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_".indexOf(c) == -1) {
+                return;
+            }
+        }
+        if (putString.get(methodName) == null) {
+            putString.put(methodName, new HashSet<>(16));
+        }
+        putString.get(methodName).add(str);
     }
 
     // 复制函数之间的关系
@@ -314,6 +339,10 @@ class WwGenTest {
     }
 
     private String getDefaultVal(Type genericType) throws Exception {
+        return String.join(", ", getDefaultValList(genericType));
+    }
+
+    private List<String> getDefaultValList(Type genericType) throws Exception {
         if (genericType instanceof ParameterizedType) {
             ParameterizedType parameterizedType = (ParameterizedType) genericType;
 
@@ -329,9 +358,9 @@ class WwGenTest {
                     tmpList.add(getDefaultVal(type.getTypeName()));
                 }
             }
-            return String.join(", ", tmpList);
+            return tmpList;
         }
-        return "";
+        return Arrays.asList("");
     }
 
     private String getDefaultVal(Class realType) {
@@ -364,7 +393,7 @@ class WwGenTest {
     }
 
     Map<String, String> defaultMap = new HashMap<>(16);
-    private void methods(Class myClass, Map<String, Set<List<String>>> whenMap) throws Exception {
+    private void methods(Class myClass, Map<String, Set<List<String>>> whenMap, Map<String, Set<String>> putString) throws Exception {
         Method[] publicMethod = myClass.getMethods();
         Method[] allMethod = myClass.getDeclaredMethods();
         List<Method> resultList = new ArrayList<>(publicMethod.length);
@@ -451,7 +480,13 @@ class WwGenTest {
                     println(parameter[i].getName() + ".add(" + getDefaultVal(genericParameterTypes[i]) + ");");
                     add = true;
                 } else if ("java.util.Map".equals(parameter[i].getType().getTypeName())) {
-                    println(parameter[i].getName() + ".put(" + getDefaultVal(genericParameterTypes[i]) + ");");
+                    List<String> tmpList = getDefaultValList(genericParameterTypes[i]);
+                    println(parameter[i].getName() + ".put(" + String.join(", ", tmpList) + ");");
+                    if (genericParameterTypes[i].toString().indexOf("java.util.Map<java.lang.String,") == 0 && !putString.get(method.getName()).isEmpty()) {
+                        for (String key : putString.get(method.getName())) {
+                            println(parameter[i].getName() + ".put(\"" + key + "\", " + tmpList.get(1) + ");");
+                        }
+                    }
                     add = true;
                 }
             }
