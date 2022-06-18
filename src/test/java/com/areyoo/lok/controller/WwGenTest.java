@@ -21,6 +21,7 @@ import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.util.ObjectUtils;
 
 /**
@@ -138,6 +139,8 @@ class WwGenTest {
         println("private " + myClass.getSimpleName() + " " + serviceName + ";");
         println("");
         int number = 0;
+
+        List<String> valueList = new ArrayList<>();
         for (Field service : fields) {
             if (service.getAnnotations().length > 0 && !service.getType().getName().contains("java.") && service.getType().getName().contains(".")) {
                 println("@Mock");
@@ -156,7 +159,23 @@ class WwGenTest {
                         number++;
                     }
                 }
+            } else if (service.getAnnotations().length > 0 && (service.getType().getName().contains("java.") || !service.getType().getName().contains("."))) {
+                // 如果有注解及类型是标量
+                String setFieldStr = "ReflectionTestUtils.setField(" + serviceName + ", \"" + service.getName() + "\", " + getDefaultVal(service.getType()) + ");";
+                valueList.add(setFieldStr);
             }
+        }
+        if (valueList.size() > 0) {
+            // 生成反射给成员变量赋值的代码
+            setImport("org.junit.jupiter.api.BeforeAll");
+            setImport("org.springframework.test.util.ReflectionTestUtils");
+            println("@BeforeAll");
+            println("private static void beforeInit() {");
+            valueList.forEach((value) -> {
+                println(value);
+            });
+            println("}");
+            println("");
         }
 
         Map<String, Set<List<String>>> whenMap = new HashMap<>(16);
@@ -400,7 +419,8 @@ class WwGenTest {
         Collections.addAll(resultList, publicMethod);
 
         Map<String, Integer> methodCount = new HashMap<>();
-        for (Method method : allMethod) {
+        for (int k = 0; k < allMethod.length; k++) {
+            Method method = allMethod[k];
             if (!resultList.contains(method) && !genPrivateMethod) {
                 continue;
             }
@@ -420,7 +440,9 @@ class WwGenTest {
                 methodCount.put(method.getName(), methodCount.get(method.getName()) + 1);
             }
 
-            println("");
+            if (k > 0) {
+                println("");
+            }
             println("/**\n" +
                     "     * " + method.getName() + "\n" +
                     "                    *\n" +
@@ -660,9 +682,11 @@ class WwGenTest {
         String result = null;
         switch (name) {
             case "java.math.BigDecimal":
+                setImport("java.math.BigDecimal");
                 result = "new BigDecimal(1)";
                 break;
             case "java.math.BigInteger":
+                setImport("java.math.BigInteger");
                 result = "new BigInteger(1)";
                 break;
             case "short":
