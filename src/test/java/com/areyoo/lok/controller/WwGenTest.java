@@ -21,14 +21,14 @@ import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.test.util.ReflectionTestUtils;
+
 import org.springframework.util.ObjectUtils;
 
 /**
  * @author xusong
  */
 @ExtendWith(MockitoExtension.class)
-class WwGenTest {
+public class WwGenTest {
     /**
      * java文件夹， 用于生成测试的 when代码 可以自定义 比如 D:/java/lok/target/test-classes/../../src/
      */
@@ -45,7 +45,12 @@ class WwGenTest {
     private Boolean genPrivateMethod = true;
 
     // 是否使用json 初始化对象
-    private Boolean useJson = false;
+    private Boolean useJson = true;
+
+    private String jsonFn = "jackson";
+
+    // 是否使用 junit5
+    private Boolean junit5 = true;
 
     /**
      * 常用的 Exception
@@ -117,7 +122,11 @@ class WwGenTest {
         setImport("org.mockito.InjectMocks");
         setImport("org.mockito.Mock");
         setImport("org.junit.Assert");
-        setImport("org.junit.jupiter.api.Test");
+        if (junit5) {
+            setImport("org.junit.jupiter.api.Test");
+        } else {
+            setImport("org.junit.Test");
+        }
         setImport("static org.mockito.Mockito.when");
         List<String> importList = new ArrayList<>(importSet);
         Collections.sort(importList);
@@ -133,7 +142,7 @@ class WwGenTest {
 
         Map<String, List<String>> map = new HashMap<>(16);
 
-        println("class " + name + "Test {");
+        println("public class " + name + "Test {");
 
         println("@InjectMocks");
         println("private " + myClass.getSimpleName() + " " + serviceName + ";");
@@ -167,9 +176,14 @@ class WwGenTest {
         }
         if (valueList.size() > 0) {
             // 生成反射给成员变量赋值的代码
-            setImport("org.junit.jupiter.api.BeforeAll");
             setImport("org.springframework.test.util.ReflectionTestUtils");
-            println("@BeforeAll");
+            if (junit5) {
+                setImport("org.junit.jupiter.api.BeforeAll");
+                println("@BeforeAll");
+            } else {
+                setImport("org.junit.BeforeClass");
+                println("@BeforeClass");
+            }
             println("private static void beforeInit() {");
             valueList.forEach((value) -> {
                 println(value);
@@ -225,8 +239,9 @@ class WwGenTest {
                 }
             }
 
-            setPutString(putString, methodMap(whenMethod));
-            for (Map.Entry<String, Set<String>> entry : methodMap(whenMethod).entrySet()) {
+            Map<String, Set<String>> tmpMethodMap = methodMap(whenMethod);
+            setPutString(putString, tmpMethodMap);
+            for (Map.Entry<String, Set<String>> entry : tmpMethodMap.entrySet()) {
                 for (String key : entry.getValue()) {
                     whenMap.get(entry.getKey()).addAll(whenMap.get(key));
                 }
@@ -273,19 +288,19 @@ class WwGenTest {
     private Map<String, Set<String>> methodMap(Map<String, Set<String>> whenMethod) {
         Map<String, Set<String>> result = new HashMap<>(16);
         for (Map.Entry<String, Set<String>> entry : whenMethod.entrySet()) {
-            result.put(entry.getKey(), methodSet(entry.getKey(), whenMethod));
+            result.put(entry.getKey(), methodSet(entry.getKey(), whenMethod, 99));
         }
         return result;
     }
 
-    private Set<String> methodSet(String key, Map<String, Set<String>> whenMethod) {
+    private Set<String> methodSet(String key, Map<String, Set<String>> whenMethod, Integer times) {
         Set<String> set = whenMethod.get(key);
-        if (set == null || set.isEmpty()) {
+        if (times.compareTo(0) <= 0 || set == null || set.isEmpty()) {
             return new HashSet<>(0);
         }
         Set<String> result = new HashSet<>(set);
         for (String key2 : set) {
-            result.addAll(methodSet(key2, whenMethod));
+            result.addAll(methodSet(key2, whenMethod, times - 1));
         }
         return result;
     }
@@ -486,6 +501,7 @@ class WwGenTest {
             if (!resultList.contains(method)) {
 
                 String superclassStr = isSuperclass ? ".getSuperclass()" : "";
+                setImport("java.lang.reflect.Method");
                 String initMethod = "Method method = " + serviceName + ".getClass()" + superclassStr + ".getDeclaredMethod(\"" + method.getName() + "\"" + joinStr
                         + String.join(", ", metaType) + ");";
                 println(initMethod);
@@ -537,8 +553,8 @@ class WwGenTest {
             if ("void".equals(returnType)) {
                 println("try {");
                 // 定义常用的 Exception
-                println("} catch (" + importException.getSimpleName() + " e) {");
-                println("error = e.getMessage();");
+                println("} catch (" + importException.getSimpleName() + " exp) {");
+                println("error = exp.getMessage();");
                 println("}");
                 println("Assert.assertTrue(error == null);");
             } else {
@@ -552,9 +568,17 @@ class WwGenTest {
             println("");
             String fnStr = null;
             if (useJson) {
+                String jsonFunction = null;
+                if (jsonFn.equals("jackson")) {
+                    setImport("com.fasterxml.jackson.databind.ObjectMapper");
+                    jsonFunction = "new ObjectMapper().readValue";
+                } else {
+                    setImport("com.google.gson.Gson");
+                    jsonFunction = "new Gson().fromJson";
+                }
                 fnStr = "private " + localType + " get" + localType
-                        + "() {\nString json = \""
-                        + entry.getValue() + "\";\n" + localType + " vo = new Gson().fromJson(json, " + localType + ".class);\nreturn vo;\n}";
+                        + "() throws Exception {\nString json = \""
+                        + entry.getValue() + "\";\n" + localType + " vo = " + jsonFunction + "(json, " + localType + ".class);\nreturn vo;\n}";
             } else {
                 setImport(entry.getKey());
                 fnStr = "private " + localType + " get" + localType
