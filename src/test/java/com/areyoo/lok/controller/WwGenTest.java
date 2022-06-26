@@ -47,7 +47,7 @@ public class WwGenTest {
     // 是否使用json 初始化对象
     private Boolean useJson = true;
 
-    private String jsonFn = "jackson";
+    private String jsonFn = "";
 
     // 是否使用 junit5
     private Boolean junit5 = true;
@@ -640,8 +640,12 @@ public class WwGenTest {
 
     Set<String> importSet = new HashSet<>(16);
     private void setImport(String name) {
-        if (isInit && name.indexOf("[") == -1) {
+        if (isInit && name.indexOf("[") == -1 && name.indexOf(".") != -1) {
             importSet.add("import " + name + ";");
+        } else if (isInit && name.indexOf("[]") != -1) {
+            importSet.add("import " + name.substring(0, name.indexOf("[]")));
+        } else if (isInit && name.indexOf(";") != -1) {
+            importSet.add("import " + name.substring(2, name.indexOf(";")));
         }
     }
 
