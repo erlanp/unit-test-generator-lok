@@ -12,6 +12,7 @@ import java.lang.reflect.Type;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -25,6 +26,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.util.ObjectUtils;
 
 /**
+ * WwGenTest
+ *
  * @author xusong
  */
 @ExtendWith(MockitoExtension.class)
@@ -45,12 +48,14 @@ public class WwGenTest {
     private Boolean genPrivateMethod = true;
 
     // 是否使用json 初始化对象
-    private Boolean useJson = true;
+    private Boolean useJson = false;
 
     private String jsonFn = "";
 
+    private String author = "";
+
     // 是否使用 junit5
-    private Boolean junit5 = true;
+    private Boolean junit5 = false;
 
     /**
      * 常用的 Exception
@@ -142,6 +147,14 @@ public class WwGenTest {
 
         Map<String, List<String>> map = new HashMap<>(16);
 
+        if (!"".equals(author)) {
+            println("/**\n" +
+                    " * " + name + " UT\n" +
+                    " *" + "\n" +
+                    " * @author " + author + "\n" +
+                    " * @date " + new Date() + "\n" +
+                    " */");
+        }
         println("public class " + name + "Test {");
 
         println("@InjectMocks");
@@ -487,7 +500,7 @@ public class WwGenTest {
             if ("void".equals(returnType)) {
                 println("String error = null;");
             } else if (returnType.indexOf("java.util.List") == 0) {
-                defString = "Object result = ";
+                defString = "List result = ";
                 assertString = "Assert.assertTrue(result != null && result.toString().indexOf(\"[\") == 0);";
             } else {
                 if (!resultList.contains(method)) {
@@ -640,12 +653,21 @@ public class WwGenTest {
 
     Set<String> importSet = new HashSet<>(16);
     private void setImport(String name) {
-        if (isInit && name.indexOf("[") == -1 && name.indexOf(".") != -1) {
+        if (!isInit) {
+            return;
+        }
+        String[] arr = name.split("[.]");
+        if (arr.length == 0) {
+            return;
+        }
+        if (name.indexOf("java.lang") == 0 && arr.length == 3) {
+            return;
+        } else if (name.indexOf("[") == -1) {
             importSet.add("import " + name + ";");
-        } else if (isInit && name.indexOf("[]") != -1) {
-            importSet.add("import " + name.substring(0, name.indexOf("[]")));
-        } else if (isInit && name.indexOf(";") != -1) {
-            importSet.add("import " + name.substring(2, name.indexOf(";")));
+        } else if (name.indexOf("[]") != -1) {
+            setImport(name.substring(0, name.indexOf("[]")));
+        } else if (name.indexOf(";") != -1) {
+            setImport(name.substring(2, name.indexOf(";")));
         }
     }
 
@@ -666,7 +688,7 @@ public class WwGenTest {
         List<String> result = new ArrayList<>(10);
         for (Method method : getMethods(myClass)) {
             Class[] parameter = method.getParameterTypes();
-            if (method.getName().length() > 3 && "set".equals(method.getName().substring(0, 3)) && parameter.length == 1 && fileContent.contains("." + method.getName() + "(")) {
+            if (method.getName().length() > 4 && "set".equals(method.getName().substring(0, 3)) && parameter.length == 1 && fileContent.contains(method.getName().substring(4))) {
                 result.add("vo." + method.getName() + "(" + getDefaultVal(parameter[0].getName())  + ");\n");
             }
         }
