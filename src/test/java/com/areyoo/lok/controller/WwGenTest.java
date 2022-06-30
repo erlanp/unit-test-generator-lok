@@ -1,8 +1,10 @@
 package com.areyoo.lok.controller;
 
 import java.io.BufferedReader;
+import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileReader;
+import java.io.FileWriter;
 import java.io.IOException;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -66,6 +68,9 @@ public class WwGenTest {
 
     private String importAny = "static org.mockito.ArgumentMatchers";
 
+    // 有输出文件路径比如 "F:/test.txt";
+    private String outputFile = "";
+
     @Test
     public void genTest() throws Exception {
         if ("".equals(filePath)) {
@@ -106,6 +111,15 @@ public class WwGenTest {
     private void genCode(Class myClass, Boolean isSuperclass) throws Exception {
         genCode(myClass, isSuperclass, true);
         genCode(myClass, isSuperclass, false);
+        if (!"".equals(outputFile)) {
+            writeFileWithBufferedWriter();
+        }
+    }
+
+    private void writeFileWithBufferedWriter() throws IOException {
+        BufferedWriter writer = new BufferedWriter(new FileWriter(outputFile));
+        writer.write(stringBuffer.toString());
+        writer.close();
     }
 
     private void genCode(Class myClass, Boolean isSuperclass, Boolean init) throws Exception {
@@ -336,6 +350,32 @@ public class WwGenTest {
         return set;
     }
 
+    private Set<Method> getSuperMethods(Class myClass) {
+        Set<Method> set = new HashSet<>(15);
+        for (Method method : myClass.getMethods()) {
+            set.add(method);
+        }
+        if (!myClass.getSuperclass().getName().contains("java.")) {
+            for (Method method : getSuperMethods(myClass.getSuperclass())) {
+                set.add(method);
+            }
+        }
+        return set;
+    }
+
+    private Set<Method> getDeclaredMethods(Class myClass) {
+        Set<Method> set = new HashSet<>(15);
+        for (Method method : myClass.getDeclaredMethods()) {
+            set.add(method);
+        }
+        if (!myClass.getSuperclass().getName().contains("java.")) {
+            for (Method method : getDeclaredMethods(myClass.getSuperclass())) {
+                set.add(method);
+            }
+        }
+        return set;
+    }
+
     private Set<Method> getDeclaredMethods(Class myClass, Boolean base) {
         Method[] methods = myClass.getDeclaredMethods();
         Set<Method> set = new HashSet<>(15);
@@ -354,9 +394,12 @@ public class WwGenTest {
         return set;
     }
 
+    private StringBuffer stringBuffer = new StringBuffer();
     private void println(String item) {
         if (!isInit) {
             System.out.println(item);
+            stringBuffer.append(item);
+            stringBuffer.append("\n");
         }
     }
 
@@ -441,14 +484,14 @@ public class WwGenTest {
 
     Map<String, String> defaultMap = new HashMap<>(16);
     private void methods(Class myClass, Map<String, Set<List<String>>> whenMap, Map<String, Set<String>> putString) throws Exception {
-        Method[] publicMethod = myClass.getMethods();
-        Method[] allMethod = myClass.getDeclaredMethods();
-        List<Method> resultList = new ArrayList<>(publicMethod.length);
-        Collections.addAll(resultList, publicMethod);
+        Set<Method> publicMethod = getSuperMethods(myClass);
+
+        List<Method> allMethod = new ArrayList<>(getDeclaredMethods(myClass));
+        List<Method> resultList = new ArrayList<>(publicMethod);
 
         Map<String, Integer> methodCount = new HashMap<>();
-        for (int k = 0; k < allMethod.length; k++) {
-            Method method = allMethod[k];
+        for (int k = 0; k < allMethod.size(); k++) {
+            Method method = allMethod.get(k);
             if (!resultList.contains(method) && !genPrivateMethod) {
                 continue;
             }
@@ -657,7 +700,7 @@ public class WwGenTest {
             return;
         }
         String[] arr = name.split("[.]");
-        if (arr.length == 0) {
+        if (arr.length == 1) {
             return;
         }
         if (name.indexOf("java.lang") == 0 && arr.length == 3) {
