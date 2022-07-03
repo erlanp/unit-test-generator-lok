@@ -191,7 +191,7 @@ public class WwGenTest {
                         if (!map.containsKey(methodStr)) {
                             map.put(methodStr, new ArrayList<>(10));
                         }
-                        map.get(methodStr).add(getWhen(serviceMethod, number, service.getName()));
+                        map.get(methodStr).add(getWhen(serviceMethod, number, service));
                         number++;
                     }
                 }
@@ -403,7 +403,8 @@ public class WwGenTest {
         }
     }
 
-    private String getWhen(Method serviceMethod, int number, String serviceName) throws Exception {
+    private String getWhen(Method serviceMethod, int number, Field field) throws Exception {
+        String serviceName = field.getName();
         // 生成 when thenReturn 代码
         List<String> list = new ArrayList<>(10);
 
@@ -542,6 +543,9 @@ public class WwGenTest {
             String assertString = "";
             if ("void".equals(returnType)) {
                 println("String error = null;");
+            } else if (returnType.indexOf(".") == -1) {
+                defString = getType(returnType) + " result = ";
+                assertString = "Assert.assertTrue(result == " + getDefaultVal(returnType) + ");";
             } else if (returnType.indexOf("java.util.List") == 0) {
                 defString = "List result = ";
                 assertString = "Assert.assertTrue(result != null && result.toString().indexOf(\"[\") == 0);";

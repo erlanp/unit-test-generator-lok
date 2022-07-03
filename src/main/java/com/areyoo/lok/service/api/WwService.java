@@ -9,7 +9,7 @@ import java.util.Map;
 /**
  * @author xusong
  */
-public interface WwService {
+public interface WwService extends BaseService<String> {
     /**
      * index 用于测试
      *
