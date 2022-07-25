@@ -1,6 +1,7 @@
 package com.areyoo.lok.controller;
 
 import com.areyoo.lok.service.api.WwService;
+import com.areyoo.lok.vo.TestTwoVo;
 import com.areyoo.lok.vo.TestVo;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationContextException;
@@ -8,6 +9,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -23,7 +25,13 @@ public class WwController extends BaseController {
     private int a;
 
     public void thisIs() {
+        wwService.index2("123");
+    }
 
+    public void thisIs(TestTwoVo vo) {
+        wwService.index2(vo.toString());
+        wwService.indexTo(new ArrayList<>());
+        wwService.indexTo2(new TestVo());
     }
 
     public List<String> thisIs2() {

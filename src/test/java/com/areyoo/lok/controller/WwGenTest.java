@@ -21,6 +21,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import com.areyoo.lok.vo.TestVo;
+
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -47,7 +49,7 @@ public class WwGenTest {
     private Boolean isSuperclass = false;
 
     // 是否生成私有方法的单元测试
-    private Boolean genPrivateMethod = true;
+    private Boolean genPrivateMethod = false;
 
     // 是否使用json 初始化对象
     private Boolean useJson = false;
@@ -71,12 +73,17 @@ public class WwGenTest {
     // 有输出文件路径比如 "F:/test.txt";
     private String outputFile = "";
 
+    // 用于不确定的泛型 比如 'com.areyoo.lok.service.api.WwService|T': String.class
+    private Map<String, Class> genericMap = new HashMap<>(15);
+
     @Test
     public void genTest() throws Exception {
         if ("".equals(filePath)) {
             // 反推java文件夹
             filePath = this.getClass().getResource("/").toString().substring(6) + "../../src/";
         }
+        // genericMap.put("com.areyoo.lok.service.api.WwService|K", TestVo.class);
+        // genericMap.put("com.areyoo.lok.service.api.WwService|T", List.class);
         // 生成当前类的单元测试
         genCode(WwController.class, false);
 
@@ -193,6 +200,12 @@ public class WwGenTest {
                         }
                         map.get(methodStr).add(getWhen(serviceMethod, number, service));
                         number++;
+                    } else if ("void".equals(t.getTypeName()) && ("".equals(fileContent) || fileContent.indexOf(methodStr) > 0)) {
+                        if (!map.containsKey(methodStr)) {
+                            map.put(methodStr, new ArrayList<>(10));
+                        }
+                        map.get(methodStr).add(getVoidWhen(serviceMethod, service));
+                        number++;
                     }
                 }
             } else if (service.getAnnotations().length > 0 && (service.getType().getName().contains("java.") || !service.getType().getName().contains("."))) {
@@ -205,13 +218,13 @@ public class WwGenTest {
             // 生成反射给成员变量赋值的代码
             setImport("org.springframework.test.util.ReflectionTestUtils");
             if (junit5) {
-                setImport("org.junit.jupiter.api.BeforeAll");
+                setImport("org.junit.jupiter.api.BeforeEach");
                 println("@BeforeAll");
             } else {
-                setImport("org.junit.BeforeClass");
+                setImport("org.junit.Before");
                 println("@BeforeClass");
             }
-            println("private static void beforeInit() {");
+            println("public void beforeInit() {");
             valueList.forEach((value) -> {
                 println(value);
             });
@@ -411,6 +424,12 @@ public class WwGenTest {
         Class returnType = serviceMethod.getReturnType();
         Type genericType = serviceMethod.getGenericReturnType();
         String setLine = null;
+
+        Class genericReturnType = genericMap.get(field.getType().getName() + "|" + genericType.toString());
+        if ("java.lang.Object".equals(returnType.getName()) && genericType.toString().length() == 1
+                && genericReturnType != null) {
+            returnType = genericReturnType;
+        }
         if (isVo(returnType)) {
             setLine = getDefType(returnType, genericType) + " then" + number  + " = get" +
                     getType(returnType.getTypeName()) + "();";
@@ -427,6 +446,25 @@ public class WwGenTest {
             list.add(getAny(param.getType().getName()));
         }
         return setLine + "\nwhen(" + serviceName + "." + serviceMethod.getName() + "(" + String.join(", ", list) + ")).thenReturn(then" + number + ");";
+    }
+
+    private String getVoidWhen(Method serviceMethod, Field field) throws Exception {
+        String serviceName = field.getName();
+        // 生成 when thenReturn 代码
+        List<String> list = new ArrayList<>(10);
+
+        Class returnType = serviceMethod.getReturnType();
+        Type genericType = serviceMethod.getGenericReturnType();
+        setImport("org.mockito.invocation.InvocationOnMock");
+        setImport("static org.mockito.Mockito.doAnswer");
+        String setLine = "doAnswer((InvocationOnMock invocation) -> {\n" +
+                "            return null;\n" +
+                "        })";
+
+        for (Parameter param : serviceMethod.getParameters()) {
+            list.add(getAny(param.getType().getName()));
+        }
+        return setLine + ".when(" + serviceName + ")." + serviceMethod.getName() + "(" + String.join(", ", list) + ");";
     }
 
     private String getDefaultVal(Type genericType) throws Exception {
@@ -638,7 +676,7 @@ public class WwGenTest {
                 }
                 fnStr = "private " + localType + " get" + localType
                         + "() throws Exception {\nString json = \""
-                        + entry.getValue() + "\";\n" + localType + " vo = " + jsonFunction + "(json, " + localType + ".class);\nreturn vo;\n}";
+                        + entry.getValue() + "\";\nreturn " + jsonFunction + "(json, " + localType + ".class);\n}";
             } else {
                 setImport(entry.getKey());
                 fnStr = "private " + localType + " get" + localType
@@ -659,12 +697,12 @@ public class WwGenTest {
     }
 
     private List<Method> getMethods(Class myClass, Class myClass2) {
-        List<Method> resultList = new ArrayList<>(myClass2.getMethods().length);
-        Collections.addAll(resultList, myClass2.getMethods());
+        List<Method> resultList = Arrays.asList(myClass2.getMethods());
 
         List<Method> list = new ArrayList<>(10);
-
-        for (Method method : myClass.getMethods()) {
+        List<Method> tmp = Arrays.asList(myClass.getMethods());
+        Collections.shuffle(tmp);
+        for (Method method : tmp) {
             if (!resultList.contains(method)) {
                 list.add(method);
             }
@@ -735,8 +773,19 @@ public class WwGenTest {
         List<String> result = new ArrayList<>(10);
         for (Method method : getMethods(myClass)) {
             Class[] parameter = method.getParameterTypes();
-            if (method.getName().length() > 4 && "set".equals(method.getName().substring(0, 3)) && parameter.length == 1 && fileContent.contains(method.getName().substring(4))) {
+            if (method.getName().length() >= 4 && "set".equals(method.getName().substring(0, 3)) && parameter.length == 1 && fileContent.contains(method.getName().substring(4))) {
                 result.add("vo." + method.getName() + "(" + getDefaultVal(parameter[0].getName())  + ");\n");
+            }
+        }
+        if (!result.isEmpty()) {
+            return String.join("", result);
+        }
+        // 如果没有匹配，就选第一个赋值
+        for (Method method : getMethods(myClass)) {
+            Class[] parameter = method.getParameterTypes();
+            if (method.getName().length() >= 4 && "set".equals(method.getName().substring(0, 3)) && parameter.length == 1) {
+                result.add("vo." + method.getName() + "(" + getDefaultVal(parameter[0].getName())  + ");\n");
+                break;
             }
         }
         return String.join("", result);
@@ -780,11 +829,11 @@ public class WwGenTest {
         switch (name) {
             case "java.math.BigDecimal":
                 setImport("java.math.BigDecimal");
-                result = "new BigDecimal(1)";
+                result = "BigDecimal.ONE";
                 break;
             case "java.math.BigInteger":
                 setImport("java.math.BigInteger");
-                result = "new BigInteger(1)";
+                result = "BigInteger.ONE";
                 break;
             case "short":
                 result = "(short)0";

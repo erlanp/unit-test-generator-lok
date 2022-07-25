@@ -8,6 +8,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.invocation.InvocationOnMock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.lang.reflect.Method;
@@ -18,6 +19,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.when;
 
 /**
@@ -96,8 +98,11 @@ class WwControllerTest {
     public void thisIsTest() throws Exception {
         String error = null;
         wwController.thisIs();
-        wwController.thisIs();
+        doAnswer((InvocationOnMock invocation) -> {
+            return null;
+        }).when(wwService).index2(anyString());
         try {
+            wwController.thisIs();
         } catch (Exception e) {
             error = e.getMessage();
         }
