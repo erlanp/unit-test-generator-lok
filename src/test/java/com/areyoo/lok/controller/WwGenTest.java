@@ -21,8 +21,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-import com.areyoo.lok.vo.TestVo;
-
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -82,7 +80,7 @@ public class WwGenTest {
             // 反推java文件夹
             filePath = this.getClass().getResource("/").toString().substring(6) + "../../src/";
         }
-        // genericMap.put("com.areyoo.lok.service.api.WwService|K", TestVo.class);
+        // genericMap.put("com.areyoo.lok.Repository|T", Author.class);
         // genericMap.put("com.areyoo.lok.service.api.WwService|T", List.class);
         // 生成当前类的单元测试
         genCode(WwController.class, false);
@@ -162,7 +160,6 @@ public class WwGenTest {
         println("");
 
         Set<Field> fields = getDeclaredFields(myClass);
-
         List<String> lineList = readFileContent(myClass);
         fileContent = String.join("\n", lineList);
 
@@ -436,7 +433,8 @@ public class WwGenTest {
         } else {
             setLine = getDefType(returnType, genericType) + " then" + number  + " = " +
                     getDefaultVal(returnType.getTypeName()) + ";";
-            if ("java.util.List".equals(returnType.getTypeName()) || "java.util.Set".equals(returnType.getTypeName())) {
+            Class[] returnTypeInterfaces = returnType.getInterfaces();
+            if (returnTypeInterfaces.length > 0 && "java.util.Collection".equals(returnTypeInterfaces[0].getName())) {
                 setLine = setLine + "\nthen" + number + ".add(" + getDefaultVal(genericType) + ");";
             } else if ("java.util.Map".equals(returnType.getTypeName())) {
                 setLine = setLine + "\nthen" + number + ".put(" + getDefaultVal(genericType) + ");";
@@ -836,12 +834,15 @@ public class WwGenTest {
                 result = "BigInteger.ONE";
                 break;
             case "short":
+            case "java.lang.Short":
                 result = "(short)0";
                 break;
             case "byte":
+            case "java.lang.Byte":
                 result = "(byte)1";
                 break;
             case "char":
+            case "java.lang.Character":
                 result = "'1'";
                 break;
             case "long":
@@ -863,8 +864,8 @@ public class WwGenTest {
             case "java.lang.String":
                 result = "\"1\"";
                 break;
-            case "java.lang.Boolean":
             case "boolean":
+            case "java.lang.Boolean":
                 result = "true";
                 break;
             case "java.util.List":
@@ -912,17 +913,19 @@ public class WwGenTest {
             case "java.math.BigDecimal":
             case "java.math.BigInteger":
             case "long":
-            case "int":
-            case "short":
-            case "double":
-            case "float":
-            case "byte":
-            case "char":
             case "java.lang.Long":
+            case "int":
             case "java.lang.Integer":
+            case "short":
             case "java.lang.Short":
+            case "double":
             case "java.lang.Double":
+            case "float":
             case "java.lang.Float":
+            case "byte":
+            case "java.lang.Byte":
+            case "char":
+            case "java.lang.Character":
             case "java.lang.String":
                 result = "'1'";
                 break;
@@ -951,33 +954,56 @@ public class WwGenTest {
         String result = null;
         switch (name) {
             case "short":
+                setImport("static org.mockito.AdditionalMatchers.or");
+                result = "or((short)2)";
+            case "java.lang.Short":
                 setImport(importAny + ".anyShort");
                 result = "anyShort()";
                 break;
             case "byte":
+                setImport("static org.mockito.AdditionalMatchers.or");
+                result = "or((byte)2)";
+                break;
+            case "java.lang.Byte":
                 setImport(importAny + ".anyByte");
                 result = "anyByte()";
                 break;
             case "char":
+                setImport("static org.mockito.AdditionalMatchers.or");
+                result = "or('2')";
+                break;
+            case "java.lang.Character":
                 setImport(importAny + ".anyChar");
                 result = "anyChar()";
                 break;
             case "long":
+                setImport("static org.mockito.AdditionalMatchers.geq");
+                result = "geq(-1L)";
+                break;
             case "java.lang.Long":
                 setImport(importAny + ".anyLong");
                 result = "anyLong()";
                 break;
             case "int":
+                setImport("static org.mockito.AdditionalMatchers.geq");
+                result = "geq(-1)";
+                break;
             case "java.lang.Integer":
                 setImport(importAny + ".anyInt");
                 result = "anyInt()";
                 break;
             case "double":
+                setImport("static org.mockito.AdditionalMatchers.geq");
+                result = "geq(-1.0D)";
+                break;
             case "java.lang.Double":
                 setImport(importAny + ".anyDouble");
                 result = "anyDouble()";
                 break;
             case "float":
+                setImport("static org.mockito.AdditionalMatchers.geq");
+                result = "geq(-1.0F)";
+                break;
             case "java.lang.Float":
                 setImport(importAny + ".anyFloat");
                 result = "anyFloat()";
@@ -986,8 +1012,11 @@ public class WwGenTest {
                 setImport(importAny + ".anyString");
                 result = "anyString()";
                 break;
-            case "java.lang.Boolean":
             case "boolean":
+                setImport("static org.mockito.AdditionalMatchers.eq");
+                result = "eq(true)";
+                break;
+            case "java.lang.Boolean":
                 setImport(importAny + ".anyBoolean");
                 result = "anyBoolean()";
                 break;

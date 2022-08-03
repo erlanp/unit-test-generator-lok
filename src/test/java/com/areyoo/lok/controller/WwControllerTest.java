@@ -4,10 +4,12 @@ import com.areyoo.lok.service.api.WwService;
 import com.areyoo.lok.vo.TestVo;
 import com.google.gson.Gson;
 import org.junit.Assert;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.MockitoAnnotations;
 import org.mockito.invocation.InvocationOnMock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -32,6 +34,11 @@ class WwControllerTest {
 
     @Mock
     private WwService wwService;
+
+    @BeforeEach
+    public void start() {
+        MockitoAnnotations.initMocks(this);
+    }
 
     /**
      * index
