@@ -80,7 +80,8 @@ public class WwGenTest {
             // 反推java文件夹
             filePath = this.getClass().getResource("/").toString().substring(6) + "../../src/";
         }
-        // genericMap.put("com.areyoo.lok.Repository|T", Author.class);
+        // genericMap.put("com.areyoo.lok.repository.AuthorRepository|S", Author.class);
+        // genericMap.put("com.areyoo.lok.repository.AuthorRepository|T", Author.class);
         // genericMap.put("com.areyoo.lok.service.api.WwService|T", List.class);
         // 生成当前类的单元测试
         genCode(WwController.class, false);
@@ -422,26 +423,26 @@ public class WwGenTest {
         Type genericType = serviceMethod.getGenericReturnType();
         String setLine = null;
 
-        Class genericReturnType = genericMap.get(field.getType().getName() + "|" + genericType.toString());
-        if ("java.lang.Object".equals(returnType.getName()) && genericType.toString().length() == 1
-                && genericReturnType != null) {
+        Class genericReturnType = getGenericClass(genericType, field);
+        if (genericReturnType != null) {
             returnType = genericReturnType;
         }
         if (isVo(returnType)) {
-            setLine = getDefType(returnType, genericType) + " then" + number  + " = get" +
+            setLine = getDefType(returnType, genericType, field) + " then" + number  + " = get" +
                     getType(returnType.getTypeName()) + "();";
         } else {
-            setLine = getDefType(returnType, genericType) + " then" + number  + " = " +
+            setLine = getDefType(returnType, genericType, field) + " then" + number  + " = " +
                     getDefaultVal(returnType.getTypeName()) + ";";
             Class[] returnTypeInterfaces = returnType.getInterfaces();
-            if (returnTypeInterfaces.length > 0 && "java.util.Collection".equals(returnTypeInterfaces[0].getName())) {
-                setLine = setLine + "\nthen" + number + ".add(" + getDefaultVal(genericType) + ");";
+            if (returnTypeInterfaces.length > 0 && Arrays.asList("java.util.List", "java.util.Collection")
+                    .indexOf(returnType.getTypeName()) != -1) {
+                setLine = setLine + "\nthen" + number + ".add(" + getDefaultVal(genericType, field) + ");";
             } else if ("java.util.Map".equals(returnType.getTypeName())) {
-                setLine = setLine + "\nthen" + number + ".put(" + getDefaultVal(genericType) + ");";
+                setLine = setLine + "\nthen" + number + ".put(" + getDefaultVal(genericType, field) + ");";
             }
         }
         for (Parameter param : serviceMethod.getParameters()) {
-            list.add(getAny(param.getType().getName()));
+            list.add(getAny(param.getType()));
         }
         return setLine + "\nwhen(" + serviceName + "." + serviceMethod.getName() + "(" + String.join(", ", list) + ")).thenReturn(then" + number + ");";
     }
@@ -460,16 +461,24 @@ public class WwGenTest {
                 "        })";
 
         for (Parameter param : serviceMethod.getParameters()) {
-            list.add(getAny(param.getType().getName()));
+            list.add(getAny(param.getType()));
         }
         return setLine + ".when(" + serviceName + ")." + serviceMethod.getName() + "(" + String.join(", ", list) + ");";
     }
 
+    private String getDefaultVal(Type genericType, Field field) throws Exception {
+        return String.join(", ", getDefaultValList(genericType, field));
+    }
+
     private String getDefaultVal(Type genericType) throws Exception {
-        return String.join(", ", getDefaultValList(genericType));
+        return getDefaultVal(genericType, null);
     }
 
     private List<String> getDefaultValList(Type genericType) throws Exception {
+        return getDefaultValList(genericType, null);
+    }
+
+    private List<String> getDefaultValList(Type genericType, Field field) throws Exception {
         if (genericType instanceof ParameterizedType) {
             ParameterizedType parameterizedType = (ParameterizedType) genericType;
 
@@ -483,6 +492,11 @@ public class WwGenTest {
                     isVo(realType);
                 } else if (type instanceof ParameterizedType) {
                     tmpList.add(getDefaultVal(type.getTypeName()));
+                } else {
+                    Class genericReturnType = getGenericClass(type, field);
+                    if (genericReturnType != null) {
+                        tmpList.add(getDefaultVal(genericReturnType.getTypeName()));
+                    }
                 }
             }
             return tmpList;
@@ -495,10 +509,18 @@ public class WwGenTest {
     }
 
     private String getDefType(Class returnType, Type genericType) throws Exception {
-        return getDefType(getType(returnType.getName()), genericType);
+        return getDefType(getType(returnType.getName()), genericType, null);
     }
 
     private String getDefType(String returnTypeName, Type genericType) throws Exception {
+        return getDefType(returnTypeName, genericType, null);
+    }
+
+    private String getDefType(Class returnType, Type genericType, Field field) throws Exception {
+        return getDefType(getType(returnType.getName()), genericType, field);
+    }
+
+    private String getDefType(String returnTypeName, Type genericType, Field field) throws Exception {
         if (genericType instanceof ParameterizedType) {
             ParameterizedType parameterizedType = (ParameterizedType) genericType;
 
@@ -512,11 +534,23 @@ public class WwGenTest {
                     isVo(realType);
                 } else if (type instanceof ParameterizedType) {
                     tmpList.add(getDefType(getType(type.getTypeName()), type));
+                } else {
+                    Class genericReturnType = getGenericClass(type, field);
+                    if (genericReturnType != null) {
+                        tmpList.add(genericReturnType.getSimpleName());
+                    }
                 }
             }
             return returnTypeName + "<" + String.join(", ", tmpList) + ">";
         }
         return returnTypeName;
+    }
+
+    private Class getGenericClass(Type genericType, Field field) {
+        if (field != null) {
+            return genericMap.get(field.getType().getName() + "|" + genericType.toString());
+        }
+        return null;
     }
 
     Map<String, String> defaultMap = new HashMap<>(16);
@@ -678,7 +712,7 @@ public class WwGenTest {
             } else {
                 setImport(entry.getKey());
                 fnStr = "private " + localType + " get" + localType
-                        + "() {\n" + localType + " vo = new " + localType + "();\n"
+                        + "() {\n"
                         + entry.getValue() + "return vo;\n}";
             }
             println(fnStr);
@@ -769,6 +803,8 @@ public class WwGenTest {
 
     private String getVo(Class myClass) throws Exception {
         List<String> result = new ArrayList<>(10);
+        String localType = getType(myClass.getName());
+        result.add(localType + " vo = new " + localType + "();");
         for (Method method : getMethods(myClass)) {
             Class[] parameter = method.getParameterTypes();
             if (method.getName().length() >= 4 && "set".equals(method.getName().substring(0, 3)) && parameter.length == 1 && fileContent.contains(method.getName().substring(4))) {
@@ -869,6 +905,7 @@ public class WwGenTest {
                 result = "true";
                 break;
             case "java.util.List":
+            case "java.util.Collection":
                 setImport("java.util.ArrayList");
                 result = "new ArrayList<>(10)";
                 break;
@@ -934,6 +971,7 @@ public class WwGenTest {
                 result = "true";
                 break;
             case "java.util.List":
+            case "java.util.Collection":
             case "java.util.Set":
                 result = "[]";
                 break;
@@ -950,94 +988,15 @@ public class WwGenTest {
         return result;
     }
 
-    private String getAny(String name) {
-        String result = null;
-        switch (name) {
-            case "short":
-                setImport("static org.mockito.AdditionalMatchers.or");
-                result = "or((short)2)";
-            case "java.lang.Short":
-                setImport(importAny + ".anyShort");
-                result = "anyShort()";
-                break;
-            case "byte":
-                setImport("static org.mockito.AdditionalMatchers.or");
-                result = "or((byte)2)";
-                break;
-            case "java.lang.Byte":
-                setImport(importAny + ".anyByte");
-                result = "anyByte()";
-                break;
-            case "char":
-                setImport("static org.mockito.AdditionalMatchers.or");
-                result = "or('2')";
-                break;
-            case "java.lang.Character":
-                setImport(importAny + ".anyChar");
-                result = "anyChar()";
-                break;
-            case "long":
-                setImport("static org.mockito.AdditionalMatchers.geq");
-                result = "geq(-1L)";
-                break;
-            case "java.lang.Long":
-                setImport(importAny + ".anyLong");
-                result = "anyLong()";
-                break;
-            case "int":
-                setImport("static org.mockito.AdditionalMatchers.geq");
-                result = "geq(-1)";
-                break;
-            case "java.lang.Integer":
-                setImport(importAny + ".anyInt");
-                result = "anyInt()";
-                break;
-            case "double":
-                setImport("static org.mockito.AdditionalMatchers.geq");
-                result = "geq(-1.0D)";
-                break;
-            case "java.lang.Double":
-                setImport(importAny + ".anyDouble");
-                result = "anyDouble()";
-                break;
-            case "float":
-                setImport("static org.mockito.AdditionalMatchers.geq");
-                result = "geq(-1.0F)";
-                break;
-            case "java.lang.Float":
-                setImport(importAny + ".anyFloat");
-                result = "anyFloat()";
-                break;
-            case "java.lang.String":
-                setImport(importAny + ".anyString");
-                result = "anyString()";
-                break;
-            case "boolean":
-                setImport("static org.mockito.AdditionalMatchers.eq");
-                result = "eq(true)";
-                break;
-            case "java.lang.Boolean":
-                setImport(importAny + ".anyBoolean");
-                result = "anyBoolean()";
-                break;
-            case "java.util.List":
-                setImport(importAny + ".anyList");
-                result = "anyList()";
-                break;
-            case "java.util.Map":
-                setImport(importAny + ".anyMap");
-                result = "anyMap()";
-                break;
-            case "java.util.Set":
-                setImport(importAny + ".anySet");
-                result = "anySet()";
-                break;
-            case "java.util.Date":
-            default:
-                setImport(importAny + ".any");
-                result = "any()";
+    private String getAny(Class aClass) {
+        String name = aClass.getName();
+        if ("java.lang.Object".equals(name)) {
+            setImport(importAny + ".any");
+            return "any()";
         }
-        return result;
+        setImport(aClass.getName());
+        setImport(importAny + ".nullable");
+        return "nullable(" + aClass.getSimpleName() + ".class)";
     }
 
     private static List<String> readFileContent(Class myClass) {
