@@ -10,7 +10,7 @@ import lombok.ToString;
 @Setter
 @Getter
 @ToString
-public class TestTwoVo {
+public class TestTwoVo implements ITestTwoVo {
     private float f;
 
     private double d;

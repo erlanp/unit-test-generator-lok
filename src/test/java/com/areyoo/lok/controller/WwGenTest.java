@@ -6,8 +6,10 @@ import java.io.File;
 import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
 import java.lang.reflect.Parameter;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
@@ -93,8 +95,7 @@ public class WwGenTest {
     private static String getAbsolutePath(Class myClass) {
         // 取得要生成单元测试的类的绝对地址 用于生成 when thenReturn
         String fileClassPath = myClass.getTypeName().replace(".", File.separator) + ".java";
-        String path = getAbsolutePath(new File(filePath), fileClassPath);
-        return path;
+        return getAbsolutePath(new File(filePath), fileClassPath);
     }
 
     private static String getAbsolutePath(File file, String filePath) {
@@ -713,7 +714,7 @@ public class WwGenTest {
                 setImport(entry.getKey());
                 fnStr = "private " + localType + " get" + localType
                         + "() {\n"
-                        + entry.getValue() + "return vo;\n}";
+                        + entry.getValue() + "\n}";
             }
             println(fnStr);
         }
@@ -747,11 +748,9 @@ public class WwGenTest {
     }
 
     private Boolean isVo(Class myClass) throws Exception {
-        setImport(myClass.getName());
-        if (myClass.getName().length() >= 5 && "java.".equals(myClass.getName().substring(0, 5))) {
+        if (myClass.getName().length() >= 9 && "java.lang".equals(myClass.getName().substring(0, 9))) {
             return false;
         }
-
         List<Method> listMethod = getMethods(myClass);
         String defaultValue = getDefaultValue(myClass.getName());
         if (!"null".equals(defaultValue)) {
@@ -760,8 +759,57 @@ public class WwGenTest {
 
         for (Method method : listMethod) {
             Class[] parameter = method.getParameterTypes();
+            if (!useJson && Modifier.isStatic(method.getModifiers())  && myClass.getName().equals(method.getReturnType().getName())) {
+                if (parameter.length == 1) {
+                    defaultMap.put(myClass.getName(), "return " + myClass.getSimpleName() + "." + method.getName() + "(" + getDefaultVal(parameter[0]) + ");");
+                    return true;
+                }
+            }
+        }
+
+        for (Method method : listMethod) {
+            Class[] parameter = method.getParameterTypes();
+            if (!useJson && Modifier.isStatic(method.getModifiers())  && myClass.getName().equals(method.getReturnType().getName())) {
+                if (parameter.length == 0) {
+                    defaultMap.put(myClass.getName(), "return " + myClass.getSimpleName() + "." + method.getName() + "();");
+                    return true;
+                }
+            }
+        }
+        if (!useJson && myClass.getName().indexOf("[") == -1 && !zeroConstructor(myClass)) {
+            setImport("static org.mockito.Mockito.mock");
+            setImport(myClass.getName());
+
+            List<String> mockVoWhenList = new ArrayList<>(10);
+            for (Method method : listMethod) {
+                Class[] parameter = method.getParameterTypes();
+                if (parameter.length == 0 && !"void".equals(method.getReturnType())) {
+                    mockVoWhenList.add("when(vo." + method.getName() + "()).thenReturn(" + getDefaultVal(method.getReturnType()) + ");");
+                }
+            }
+            if (mockVoWhenList.isEmpty()) {
+                defaultMap.put(myClass.getName(), "return mock(" + myClass.getSimpleName() + ".class);");
+            } else {
+                mockVoWhenList.add("return vo;");
+                defaultMap.put(myClass.getSimpleName(), myClass.getSimpleName() +
+                        " vo = mock(" + myClass.getSimpleName() + ".class);\n" +
+                        String.join("\n", mockVoWhenList));
+            }
+            return true;
+        }
+        for (Method method : listMethod) {
+            Class[] parameter = method.getParameterTypes();
             if (method.getName().length() > 3 && "set".equals(method.getName().substring(0, 3)) && parameter.length == 1) {
                 defaultMap.put(myClass.getName(), useJson ? getAttr(myClass) : getVo(myClass));
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private Boolean zeroConstructor(Class aClass) {
+        for (Constructor item : aClass.getDeclaredConstructors()) {
+            if (item.getParameterTypes().length == 0) {
                 return true;
             }
         }
@@ -804,7 +852,7 @@ public class WwGenTest {
     private String getVo(Class myClass) throws Exception {
         List<String> result = new ArrayList<>(10);
         String localType = getType(myClass.getName());
-        result.add(localType + " vo = new " + localType + "();");
+        result.add(localType + " vo = new " + localType + "();\n");
         for (Method method : getMethods(myClass)) {
             Class[] parameter = method.getParameterTypes();
             if (method.getName().length() >= 4 && "set".equals(method.getName().substring(0, 3)) && parameter.length == 1 && fileContent.contains(method.getName().substring(4))) {
@@ -812,7 +860,7 @@ public class WwGenTest {
             }
         }
         if (!result.isEmpty()) {
-            return String.join("", result);
+            return String.join("", result) + "return vo;";
         }
         // 如果没有匹配，就选第一个赋值
         for (Method method : getMethods(myClass)) {
@@ -822,7 +870,7 @@ public class WwGenTest {
                 break;
             }
         }
-        return String.join("", result);
+        return String.join("", result) + "return vo;";
     }
 
     private List<String> getMethodParameterTypes(Method method) throws Exception {

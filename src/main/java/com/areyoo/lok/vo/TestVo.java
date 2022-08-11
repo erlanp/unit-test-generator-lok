@@ -8,6 +8,7 @@ import java.math.BigDecimal;
 import java.util.Date;
 import java.util.List;
 import java.util.Set;
+import java.util.UUID;
 
 /**
  * @author xusong
@@ -23,6 +24,8 @@ public class TestVo {
     private Set<String> set;
 
     private Date date;
+
+    private UUID uuid;
 
     private Float f;
 
@@ -46,4 +49,8 @@ public class TestVo {
     private Short s;
 
     private BigDecimal cost;
+
+    public void test() {
+
+    }
 }

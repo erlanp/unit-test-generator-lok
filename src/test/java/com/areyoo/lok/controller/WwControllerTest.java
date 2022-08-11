@@ -1,80 +1,48 @@
 package com.areyoo.lok.controller;
 
 import com.areyoo.lok.service.api.WwService;
+import com.areyoo.lok.vo.ITestTwoVo;
+import com.areyoo.lok.vo.TestTwoVo;
 import com.areyoo.lok.vo.TestVo;
-import com.google.gson.Gson;
+import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 import org.junit.Assert;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
-import org.mockito.MockitoAnnotations;
 import org.mockito.invocation.InvocationOnMock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import java.lang.reflect.Method;
-import java.math.BigDecimal;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-
-import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-/**
- * @author xusong
- */
 @ExtendWith(MockitoExtension.class)
-class WwControllerTest {
+public class WwControllerTest {
     @InjectMocks
     private WwController wwController;
 
     @Mock
     private WwService wwService;
 
-    @BeforeEach
-    public void start() {
-        MockitoAnnotations.initMocks(this);
-    }
-
     /**
-     * index
+     * thisIs2
      *
      * @throws Exception
      */
     @Test
-    public void indexTest() throws Exception {
-        String mess = "1";
-        String result = wwController.index(mess);
-
-        String then0 = "1";
-        when(wwService.index(anyString())).thenReturn(then0);
-        wwController.index(mess);
-        Assert.assertTrue(result == null);
-    }
-
-    /**
-     * test
-     *
-     * @throws Exception
-     */
-    @Test
-    public void testTest() throws Exception {
-        TestVo vo = getTestVo();
-        String result = wwController.test(vo);
-
-        Map<String, TestVo> then1 = new HashMap<>(16);
-        then1.put("1", getTestVo());
-        when(wwService.indexMap(anyString())).thenReturn(then1);
-
-        Map<String, List<String>> then2 = new HashMap<>(16);
-        then2.put("1", new ArrayList<>(10));
-        when(wwService.indexMap2(anyString())).thenReturn(then2);
-        wwController.test(vo);
-        Assert.assertTrue(result != null);
+    public void thisIs2Test() throws Exception {
+        List result = wwController.thisIs2();
+        Assert.assertTrue(result != null && result.toString().indexOf("[") == 0);
     }
 
     /**
@@ -88,11 +56,63 @@ class WwControllerTest {
         Map<String, List<String>> vo2 = new HashMap<>(16);
         String[] str = {"1"};
         List[] list = new ArrayList[1];
-        BigDecimal m = new BigDecimal(1);
+        BigDecimal m = BigDecimal.ONE;
         String result = wwController.testMoot(vo, vo2, str, list, m);
         vo.put("1", getTestVo());
         vo2.put("1", new ArrayList<>(10));
         wwController.testMoot(vo, vo2, str, list, m);
+        Assert.assertTrue(result != null);
+    }
+
+    /**
+     * index
+     *
+     * @throws Exception
+     */
+    @Test
+    public void indexTest() throws Exception {
+        String mess = "1";
+        String result = wwController.index(mess);
+
+        String then2 = "1";
+        when(wwService.index(nullable(String.class))).thenReturn(then2);
+        wwController.index(mess);
+        Assert.assertTrue(result != null);
+    }
+
+    /**
+     * tttt
+     *
+     * @throws Exception
+     */
+    @Test
+    public void ttttTest() throws Exception {
+        UUID uuid = getUUID();
+        Map<String, String> map = new HashMap<>(16);
+        String result = wwController.tttt(uuid, map);
+        map.put("1", "1");
+        wwController.tttt(uuid, map);
+        Assert.assertTrue(result != null);
+    }
+
+    /**
+     * test
+     *
+     * @throws Exception
+     */
+    @Test
+    public void testTest() throws Exception {
+        TestVo vo = getTestVo();
+        String result = wwController.test(vo);
+
+        Map<String, List<String>> then0 = new HashMap<>(16);
+        then0.put("1", new ArrayList<>(10));
+        when(wwService.indexMap2(nullable(String.class))).thenReturn(then0);
+
+        Map<String, TestVo> then5 = new HashMap<>(16);
+        then5.put("1", getTestVo());
+        when(wwService.indexMap(nullable(String.class))).thenReturn(then5);
+        wwController.test(vo);
         Assert.assertTrue(result != null);
     }
 
@@ -103,71 +123,76 @@ class WwControllerTest {
      */
     @Test
     public void thisIsTest() throws Exception {
+        ITestTwoVo vo = getITestTwoVo();
         String error = null;
-        wwController.thisIs();
+        wwController.thisIs(vo);
+
         doAnswer((InvocationOnMock invocation) -> {
             return null;
-        }).when(wwService).index2(anyString());
+        }).when(wwService).index2(nullable(String.class));
+        wwController.thisIs(vo);
         try {
-            wwController.thisIs();
-        } catch (Exception e) {
-            error = e.getMessage();
+        } catch (Exception exp) {
+            error = exp.getMessage();
         }
         Assert.assertTrue(error == null);
     }
 
     /**
-     * thisIs2
+     * thisIs
      *
      * @throws Exception
      */
     @Test
-    public void thisIs2Test() throws Exception {
-        Object result = wwController.thisIs2();
-        wwController.thisIs2();
-        Assert.assertTrue(result != null && result.toString().indexOf("[") == 0);
-    }
+    public void thisIsTwoTest() throws Exception {
+        String error = null;
+        wwController.thisIs();
 
-    /**
-     * getTestVo
-     *
-     * @throws Exception
-     */
-    @Test
-    public void getTestVoTest() throws Exception {
-        TestVo vo = getTestVo();
-        Method method = wwController.getClass().getDeclaredMethod("getTestVo", TestVo.class);
-        method.setAccessible(true);
-        Object result = method.invoke(wwController, vo);
-        Assert.assertTrue(result != null);
-    }
+        doAnswer((InvocationOnMock invocation) -> {
+            return null;
+        }).when(wwService).index2(nullable(String.class));
 
-    /**
-     * getTestVo2
-     *
-     * @throws Exception
-     */
-    @Test
-    public void getTestVo2Test() throws Exception {
-        TestVo vo = getTestVo();
-        Boolean isOK = true;
-        Boolean isYes = true;
-        List<TestVo> list = new ArrayList<>(10);
-        Map<String, String> map = new HashMap<>(16);
-        Map<String, List<String>> map2 = new HashMap<>(16);
-        Method method = wwController.getClass().getDeclaredMethod("getTestVo2", TestVo.class, Boolean.class, Boolean.class, List.class, Map.class, Map.class);
-        method.setAccessible(true);
-        Object result = method.invoke(wwController, vo, isOK, isYes, list, map, map2);
-        list.add(getTestVo());
-        map.put("1", "1");
-        map2.put("1", new ArrayList<>(10));
-        Assert.assertTrue(result != null);
+        wwController.thisIs();
+        try {
+        } catch (Exception exp) {
+            error = exp.getMessage();
+        }
+        Assert.assertTrue(error == null);
     }
 
     private TestVo getTestVo() {
-        String json = "{'wwController':0,'name':'1','date':null,'cost':'1','id':'1','list':[],'f':'1','testTwoVo':null,'set':[],'d':'1','s':'1','i':'1','count':'1','f2':'1','d2':'1','b2':'1','l':'1','s2':'1','b':null,'c2':'1'}";
-        TestVo vo = new Gson().fromJson(json, TestVo.class);
+        TestVo vo = new TestVo();
+        vo.setS2((short)0);
+        vo.setC2('1');
+        vo.setName("1");
+        vo.setI(1);
+        vo.setL(1L);
+        vo.setId(1L);
+        vo.setUuid(getUUID());
+        vo.setB((byte)1);
+        vo.setB2((byte)1);
+        vo.setD(1.0D);
+        vo.setCost(BigDecimal.ONE);
+        vo.setF2(1.0F);
+        vo.setSet(new HashSet<>(16));
+        vo.setF(1.0F);
+        vo.setDate(new Date());
+        vo.setList(new ArrayList<>(10));
+        vo.setD2(1.0D);
+        vo.setS((short)0);
+        vo.setTestTwoVo(new TestTwoVo());
         return vo;
     }
-}
 
+    private ITestTwoVo getITestTwoVo() {
+        ITestTwoVo vo = mock(ITestTwoVo.class);
+        when(vo.getD()).thenReturn(1.0D);
+        when(vo.getF()).thenReturn(1.0F);
+        when(vo.getCount()).thenReturn(1);
+        return vo;
+    }
+
+    private UUID getUUID() {
+        return UUID.randomUUID();
+    }
+}

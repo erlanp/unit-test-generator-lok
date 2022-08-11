@@ -1,7 +1,7 @@
 package com.areyoo.lok.controller;
 
 import com.areyoo.lok.service.api.WwService;
-import com.areyoo.lok.vo.TestTwoVo;
+import com.areyoo.lok.vo.ITestTwoVo;
 import com.areyoo.lok.vo.TestVo;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationContextException;
@@ -13,6 +13,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 /**
  * @author xusong
@@ -28,7 +29,7 @@ public class WwController extends BaseController {
         wwService.index2("123");
     }
 
-    public void thisIs(TestTwoVo vo) {
+    public void thisIs(ITestTwoVo vo) {
         wwService.index2(vo.toString());
         wwService.indexTo(new ArrayList<>());
         wwService.indexTo2(new TestVo());
@@ -59,8 +60,13 @@ public class WwController extends BaseController {
     @RequestMapping("/test")
     public String test(TestVo vo) throws ApplicationContextException {
 	    vo.setId(2L);
+        vo.setUuid(UUID.randomUUID());
         getTestVo(vo);
         return vo.toString();
+    }
+
+    public String tttt(UUID uuid, Map<String, String> map) {
+        return uuid.toString();
     }
 
     private TestVo getTestVo(TestVo vo) {
