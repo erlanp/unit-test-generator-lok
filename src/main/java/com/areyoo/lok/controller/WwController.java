@@ -33,6 +33,7 @@ public class WwController extends BaseController {
         wwService.index2(vo.toString());
         wwService.indexTo(new ArrayList<>());
         wwService.indexTo2(new TestVo());
+        wwService.indexTo3(new TestVo());
     }
 
     public List<String> thisIs2() {

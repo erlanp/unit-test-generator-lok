@@ -6,6 +6,7 @@ import java.io.File;
 import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.lang.reflect.AnnotatedType;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -25,6 +26,7 @@ import java.util.Set;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import org.springframework.util.ObjectUtils;
@@ -75,6 +77,9 @@ public class WwGenTest {
 
     // 用于不确定的泛型 比如 'com.areyoo.lok.service.api.WwService|T': String.class
     private Map<String, Class> genericMap = new HashMap<>(15);
+
+    // 用于生成测试类继承的类
+    private Class baseTest = null;
 
     @Test
     public void genTest() throws Exception {
@@ -175,7 +180,12 @@ public class WwGenTest {
                     " * @date " + new Date() + "\n" +
                     " */");
         }
-        println("public class " + name + "Test {");
+        if (baseTest == null) {
+            println("public class " + name + "Test {");
+        } else {
+            setImport(baseTest.getName());
+            println("public class " + name + "Test extends " + baseTest.getSimpleName() + " {");
+        }
 
         println("@InjectMocks");
         println("private " + myClass.getSimpleName() + " " + serviceName + ";");
@@ -215,12 +225,11 @@ public class WwGenTest {
         }
         if (valueList.size() > 0) {
             // 生成反射给成员变量赋值的代码
-            setImport("org.springframework.test.util.ReflectionTestUtils");
             if (junit5) {
-                setImport("org.junit.jupiter.api.BeforeEach");
+                setImport("org.junit.jupiter.api.BeforeAll");
                 println("@BeforeAll");
             } else {
-                setImport("org.junit.Before");
+                setImport("org.junit.BeforeClass");
                 println("@BeforeClass");
             }
             println("public void beforeInit() {");
@@ -418,7 +427,6 @@ public class WwGenTest {
     private String getWhen(Method serviceMethod, int number, Field field) throws Exception {
         String serviceName = field.getName();
         // 生成 when thenReturn 代码
-        List<String> list = new ArrayList<>(10);
 
         Class returnType = serviceMethod.getReturnType();
         Type genericType = serviceMethod.getGenericReturnType();
@@ -428,43 +436,133 @@ public class WwGenTest {
         if (genericReturnType != null) {
             returnType = genericReturnType;
         }
+
+        Class[] returnTypeInterfaces = returnType.getInterfaces();
         if (isVo(returnType)) {
             setLine = getDefType(returnType, genericType, field) + " then" + number  + " = get" +
                     getType(returnType.getTypeName()) + "();";
         } else {
-            setLine = getDefType(returnType, genericType, field) + " then" + number  + " = " +
-                    getDefaultVal(returnType.getTypeName()) + ";";
-            Class[] returnTypeInterfaces = returnType.getInterfaces();
-            if (returnTypeInterfaces.length > 0 && Arrays.asList("java.util.List", "java.util.Collection")
-                    .indexOf(returnType.getTypeName()) != -1) {
-                setLine = setLine + "\nthen" + number + ".add(" + getDefaultVal(genericType, field) + ");";
-            } else if ("java.util.Map".equals(returnType.getTypeName())) {
-                setLine = setLine + "\nthen" + number + ".put(" + getDefaultVal(genericType, field) + ");";
+            int same = -1;
+            AnnotatedType[] annotatedTypes = serviceMethod.getAnnotatedParameterTypes();
+            if (returnTypeInterfaces.length > 0 &&
+                    Arrays.asList("java.util.List", "java.util.Collection").indexOf(returnType.getTypeName()) != -1 &&
+                    genericType instanceof ParameterizedType) {
+                ParameterizedType parameterizedType = (ParameterizedType) genericType;
+                Type[] types = parameterizedType.getActualTypeArguments();
+                same = sameIndex(serviceMethod, types[0]);
+            }
+
+            if (same != -1) {
+                return getDoReturnListWhen(serviceMethod, field, same);
+            }
+
+            if (Arrays.asList("java.util.Map", "java.util.HashMap").indexOf(returnType.getTypeName()) != -1 &&
+                    genericType instanceof ParameterizedType) {
+                ParameterizedType parameterizedType = (ParameterizedType) genericType;
+                Type[] types = parameterizedType.getActualTypeArguments();
+                if ("java.lang.String".equals(types[0].getTypeName())) {
+                    same = sameIndex(serviceMethod, types[1]);
+                }
+            }
+
+            if (same != -1) {
+                return getDoReturnMapWhen(serviceMethod, field, same);
+            }
+
+            if (genericType != null && "java.lang.Object".equals(returnType.getName())
+                    && serviceMethod.getAnnotatedParameterTypes().length >= 1) {
+
+                same = sameIndex(serviceMethod, genericType);
+            }
+            if (same == -1) {
+                setLine = getDefType(returnType, genericType, field) + " then" + number  + " = " +
+                        getDefaultVal(returnType.getTypeName()) + ";";
+                if (returnTypeInterfaces.length > 0 &&
+                        Arrays.asList("java.util.List", "java.util.Collection").indexOf(returnType.getTypeName()) != -1) {
+                    setLine = setLine + "\nthen" + number + ".add(" + getDefaultVal(genericType, field) + ");";
+                } else if (Arrays.asList("java.util.Map", "java.util.HashMap").indexOf(returnType.getTypeName()) != -1) {
+                    setLine = setLine + "\nthen" + number + ".put(" + getDefaultVal(genericType, field) + ");";
+                }
+            } else {
+                return getDoReturnWhen(serviceMethod, field, same);
             }
         }
-        for (Parameter param : serviceMethod.getParameters()) {
-            list.add(getAny(param.getType()));
+        return setLine + "\nwhen(" + serviceName + "." + methodParame(serviceMethod) + ").thenReturn(then" + number + ");";
+    }
+
+    private Integer sameIndex(Method serviceMethod, Type genericType) {
+        int same = -1;
+        AnnotatedType[] annotatedTypes = serviceMethod.getAnnotatedParameterTypes();
+        for (int i = 0; i < annotatedTypes.length; i++) {
+            AnnotatedType item = annotatedTypes[i];
+            if (genericType.getTypeName().equals(item.getType().getTypeName())) {
+                same = i;
+                break;
+            }
         }
-        return setLine + "\nwhen(" + serviceName + "." + serviceMethod.getName() + "(" + String.join(", ", list) + ")).thenReturn(then" + number + ");";
+        return same;
+    }
+
+    private String getDoReturnListWhen(Method serviceMethod, Field field, Integer same) throws Exception {
+        String serviceName = field.getName();
+        // 生成 when thenReturn 代码
+
+        setImport("org.mockito.invocation.InvocationOnMock");
+        setImport("static org.mockito.Mockito.doAnswer");
+        setImport("java.util.List");
+        setImport("java.util.ArrayList");
+        String setLine = "doAnswer((InvocationOnMock invocation) -> {\n" +
+                "            List<Object> tmpList = new ArrayList<>(1);\n" +
+                "            tmpList.add(invocation.getArgument(" + same + "));\n" +
+                "            return tmpList;\n" +
+                "        })";
+        return setLine + ".when(" + serviceName + ")." + methodParame(serviceMethod) + ";";
+    }
+
+    private String getDoReturnMapWhen(Method serviceMethod, Field field, Integer same) throws Exception {
+        String serviceName = field.getName();
+
+        setImport("org.mockito.invocation.InvocationOnMock");
+        setImport("static org.mockito.Mockito.doAnswer");
+        setImport("java.util.Map");
+        setImport("java.util.HashMap");
+        String setLine = "doAnswer((InvocationOnMock invocation) -> {\n" +
+                "            Map<String, Object> tmpMap = new HashMap<>(1);\n" +
+                "            tmpMap.put(\"1\", invocation.getArgument(" + same + "));\n" +
+                "            return tmpMap;\n" +
+                "        })";
+        return setLine + ".when(" + serviceName + ")." + methodParame(serviceMethod) + ";";
+    }
+
+    private String getDoReturnWhen(Method serviceMethod, Field field, Integer same) throws Exception {
+        String serviceName = field.getName();
+
+        setImport("org.mockito.invocation.InvocationOnMock");
+        setImport("static org.mockito.Mockito.doAnswer");
+        String setLine = "doAnswer((InvocationOnMock invocation) -> {\n" +
+                "            return invocation.getArgument(" + same + ");\n" +
+                "        })";
+        return setLine + ".when(" + serviceName + ")." + methodParame(serviceMethod) + ";";
     }
 
     private String getVoidWhen(Method serviceMethod, Field field) throws Exception {
         String serviceName = field.getName();
-        // 生成 when thenReturn 代码
-        List<String> list = new ArrayList<>(10);
 
-        Class returnType = serviceMethod.getReturnType();
-        Type genericType = serviceMethod.getGenericReturnType();
         setImport("org.mockito.invocation.InvocationOnMock");
         setImport("static org.mockito.Mockito.doAnswer");
         String setLine = "doAnswer((InvocationOnMock invocation) -> {\n" +
                 "            return null;\n" +
                 "        })";
+        return setLine + ".when(" + serviceName + ")." + methodParame(serviceMethod) + ";";
+    }
 
+    private String methodParame(Method serviceMethod) {
+        // 生成 when thenReturn 代码
+        List<String> list = new ArrayList<>(10);
         for (Parameter param : serviceMethod.getParameters()) {
             list.add(getAny(param.getType()));
         }
-        return setLine + ".when(" + serviceName + ")." + serviceMethod.getName() + "(" + String.join(", ", list) + ");";
+        return serviceMethod.getName() + "(" + String.join(", ", list) + ")";
     }
 
     private String getDefaultVal(Type genericType, Field field) throws Exception {
@@ -562,6 +660,19 @@ public class WwGenTest {
         List<Method> resultList = new ArrayList<>(publicMethod);
 
         Map<String, Integer> methodCount = new HashMap<>();
+
+        if (baseTest == null) {
+            setImport("org.mockito.MockitoAnnotations");
+            if (junit5) {
+                setImport("org.junit.jupiter.api.BeforeEach");
+            } else {
+                setImport("org.junit.Before");
+            }
+            println((junit5 ? "@BeforeEach" : "@Before") + "\n" +
+                    "    public void before() {\n" +
+                    "        MockitoAnnotations.initMocks(this);\n" +
+                    "    }");
+        }
         for (int k = 0; k < allMethod.size(); k++) {
             Method method = allMethod.get(k);
             if (!resultList.contains(method) && !genPrivateMethod) {
@@ -954,6 +1065,7 @@ public class WwGenTest {
                 break;
             case "java.util.List":
             case "java.util.Collection":
+                setImport("java.util.List");
                 setImport("java.util.ArrayList");
                 result = "new ArrayList<>(10)";
                 break;
@@ -985,7 +1097,7 @@ public class WwGenTest {
                     result = "new HashSet[1]";
                     break;
                 default:
-                    result = "{" + result + "}";
+                    result = "new " + getType(name) + "[] {" + result + "}";
             }
             return result;
         }

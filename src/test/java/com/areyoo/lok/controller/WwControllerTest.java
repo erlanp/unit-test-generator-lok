@@ -13,12 +13,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.junit.Assert;
+
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
+
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.MockitoAnnotations;
 import org.mockito.invocation.InvocationOnMock;
-import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.nullable;
@@ -26,13 +28,17 @@ import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-@ExtendWith(MockitoExtension.class)
 public class WwControllerTest {
     @InjectMocks
     private WwController wwController;
 
     @Mock
     private WwService wwService;
+
+    @BeforeEach
+    public void before() {
+        MockitoAnnotations.initMocks(this);
+    }
 
     /**
      * thisIs2
@@ -130,6 +136,12 @@ public class WwControllerTest {
         doAnswer((InvocationOnMock invocation) -> {
             return null;
         }).when(wwService).index2(nullable(String.class));
+
+        doAnswer((InvocationOnMock invocation) -> {
+            Map<String, Object> tmpMap = new HashMap<>(1);
+            tmpMap.put("1", invocation.getArgument(0));
+            return tmpMap;
+        }).when(wwService).indexTo3(any());
         wwController.thisIs(vo);
         try {
         } catch (Exception exp) {
