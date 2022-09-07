@@ -27,6 +27,7 @@ import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 
+import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import org.springframework.util.ObjectUtils;
@@ -107,19 +108,20 @@ public class WwGenTest {
         File[] fs = file.listFiles();
         String result = "";
         for (File f : fs) {
-            if(f.isDirectory()) {
+            if (f.isDirectory()) {
                 result = getAbsolutePath(f, filePath);
                 if (!"".equals(result)) {
                     return result;
                 }
-            } else if(f.isFile() && f.getAbsolutePath().indexOf(filePath) > 0) {
+            } else if (f.isFile() && f.getAbsolutePath().indexOf(filePath) > 0) {
                 return f.getAbsolutePath();
             }
         }
         return "";
     }
 
-    private Boolean isInit;
+    private Boolean isInit = true;
+
     private void genCode(Class myClass, Boolean isSuperclass) throws Exception {
         genCode(myClass, isSuperclass, true);
         genCode(myClass, isSuperclass, false);
@@ -149,6 +151,8 @@ public class WwGenTest {
         if ("".equals(serviceName)) {
             serviceName = name.substring(0, 1).toLowerCase() + name.substring(1);
         }
+        println("package " + myClass.getName().substring(0, myClass.getName().length() - myClass.getSimpleName().length() - 1));
+        println("");
 
         setImport("org.mockito.InjectMocks");
         setImport("org.mockito.Mock");
@@ -194,8 +198,11 @@ public class WwGenTest {
 
         List<String> valueList = new ArrayList<>();
         for (Field service : fields) {
+
             if (service.getAnnotations().length > 0 && !service.getType().getName().contains("java.") && service.getType().getName().contains(".")) {
-                println("@Mock");
+                setImport("static org.mockito.Mockito.mock");
+                setImport("org.mockito.Answers");
+                println("@Mock(answer = Answers.RETURNS_DEEP_STUBS)");
                 setImport(service.getType().getName());
                 println("private " + service.getType().getSimpleName() + " " + service.getName() + ";");
                 println("");
@@ -262,14 +269,14 @@ public class WwGenTest {
                 boolean maybeFunction = (line.indexOf("(") != -1);
                 if (maybeFunction && (line.indexOf("private") > 0 || line.indexOf("public") > 0 || line.indexOf("protected") > 0)) {
                     for (Method method : methods) {
-                        if (line.indexOf(" " + method.getName() + "(") > 0) {
+                        if (lineHasMethod(line, method.getName())) {
                             methodName = method.getName();
                         }
                     }
                 } else {
                     if (maybeFunction) {
                         for (Method method : methods) {
-                            if (!"".equals(methodName) && line.indexOf(" " + method.getName() + "(") > 0) {
+                            if (!"".equals(methodName) && lineHasMethod(line, method.getName())) {
                                 whenMethod.get(methodName).add(method.getName());
                             }
                         }
@@ -307,6 +314,19 @@ public class WwGenTest {
                 }
             });
         }
+    }
+
+    private boolean lineHasMethod(String line, String methodName) {
+        if (line.indexOf(methodName) > 0) {
+            if (line.indexOf(" " + methodName + "(") >= 0) {
+                return true;
+            } else if (line.indexOf("this." + methodName + "(") >= 0) {
+                return true;
+            } else if (line.indexOf("this::" + methodName) >= 0) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private void setPutString(Map<String, Set<String>> putString, Map<String, Set<String>> whenMethod) {
@@ -416,6 +436,7 @@ public class WwGenTest {
     }
 
     private StringBuffer stringBuffer = new StringBuffer();
+
     private void println(String item) {
         if (!isInit) {
             System.out.println(item);
@@ -439,8 +460,8 @@ public class WwGenTest {
 
         Class[] returnTypeInterfaces = returnType.getInterfaces();
         if (isVo(returnType)) {
-            setLine = getDefType(returnType, genericType, field) + " then" + number  + " = get" +
-                    getType(returnType.getTypeName()) + "();";
+            setLine = getDefType(returnType, genericType, field) + " then" + number + " = " +
+                    getInitVo(returnType.getTypeName()) + ";";
         } else {
             int same = -1;
             AnnotatedType[] annotatedTypes = serviceMethod.getAnnotatedParameterTypes();
@@ -475,7 +496,7 @@ public class WwGenTest {
                 same = sameIndex(serviceMethod, genericType);
             }
             if (same == -1) {
-                setLine = getDefType(returnType, genericType, field) + " then" + number  + " = " +
+                setLine = getDefType(returnType, genericType, field) + " then" + number + " = " +
                         getDefaultVal(returnType.getTypeName()) + ";";
                 if (returnTypeInterfaces.length > 0 &&
                         Arrays.asList("java.util.List", "java.util.Collection").indexOf(returnType.getTypeName()) != -1) {
@@ -488,6 +509,10 @@ public class WwGenTest {
             }
         }
         return setLine + "\nwhen(" + serviceName + "." + methodParame(serviceMethod) + ").thenReturn(then" + number + ");";
+    }
+
+    private String getInitVo(String className) {
+        return "get" + getType(className).replace(".", "$") + "()";
     }
 
     private Integer sameIndex(Method serviceMethod, Type genericType) {
@@ -653,6 +678,8 @@ public class WwGenTest {
     }
 
     Map<String, String> defaultMap = new HashMap<>(16);
+    Map<String, String> newMap = new HashMap<>(16);
+
     private void methods(Class myClass, Map<String, Set<List<String>>> whenMap, Map<String, Set<String>> putString) throws Exception {
         Set<Method> publicMethod = getSuperMethods(myClass);
 
@@ -707,11 +734,11 @@ public class WwGenTest {
             for (int i = 0; i < classes.length; i++) {
                 // 取得每个参数的初始化
                 if (isVo(classes[i])) {
-                    String setLine = parameterType.get(i) + " " + parameter[i].getName()  + " = get" +
-                            getType(classes[i].getTypeName()) + "();";
+                    String setLine = parameterType.get(i) + " " + parameter[i].getName() + " = " +
+                            getInitVo(classes[i].getTypeName()) + ";";
                     println(setLine);
                 } else {
-                    String setLine = parameterType.get(i) + " " + parameter[i].getName()  + " = " +
+                    String setLine = parameterType.get(i) + " " + parameter[i].getName() + " = " +
                             getDefaultVal(classes[i].getTypeName()) + ";";
                     println(setLine);
                 }
@@ -818,13 +845,13 @@ public class WwGenTest {
                     setImport("com.google.gson.Gson");
                     jsonFunction = "new Gson().fromJson";
                 }
-                fnStr = "private " + localType + " get" + localType
-                        + "() throws Exception {\nString json = \""
+                fnStr = "private " + localType + " " + getInitVo(entry.getKey())
+                        + " throws Exception {\nString json = \""
                         + entry.getValue() + "\";\nreturn " + jsonFunction + "(json, " + localType + ".class);\n}";
             } else {
                 setImport(entry.getKey());
-                fnStr = "private " + localType + " get" + localType
-                        + "() {\n"
+                fnStr = "private " + localType + " " + getInitVo(entry.getKey())
+                        + " {\n"
                         + entry.getValue() + "\n}";
             }
             println(fnStr);
@@ -858,7 +885,7 @@ public class WwGenTest {
         return getMethods(myClass, Object.class);
     }
 
-    private Boolean isVo(Class myClass) throws Exception {
+    private Boolean isVo(Class myClass) {
         if (myClass.getName().length() >= 9 && "java.lang".equals(myClass.getName().substring(0, 9))) {
             return false;
         }
@@ -867,10 +894,12 @@ public class WwGenTest {
         if (!"null".equals(defaultValue)) {
             return false;
         }
-
+        if (defaultMap.containsKey(myClass.getName())) {
+            return true;
+        }
         for (Method method : listMethod) {
             Class[] parameter = method.getParameterTypes();
-            if (!useJson && Modifier.isStatic(method.getModifiers())  && myClass.getName().equals(method.getReturnType().getName())) {
+            if (!useJson && Modifier.isStatic(method.getModifiers()) && myClass.getName().equals(method.getReturnType().getName())) {
                 if (parameter.length == 1) {
                     defaultMap.put(myClass.getName(), "return " + myClass.getSimpleName() + "." + method.getName() + "(" + getDefaultVal(parameter[0]) + ");");
                     return true;
@@ -880,15 +909,16 @@ public class WwGenTest {
 
         for (Method method : listMethod) {
             Class[] parameter = method.getParameterTypes();
-            if (!useJson && Modifier.isStatic(method.getModifiers())  && myClass.getName().equals(method.getReturnType().getName())) {
+            if (!useJson && Modifier.isStatic(method.getModifiers()) && myClass.getName().equals(method.getReturnType().getName())) {
                 if (parameter.length == 0) {
                     defaultMap.put(myClass.getName(), "return " + myClass.getSimpleName() + "." + method.getName() + "();");
                     return true;
                 }
             }
         }
-        if (!useJson && myClass.getName().indexOf("[") == -1 && !zeroConstructor(myClass)) {
+        if (!useJson && myClass.getName().indexOf("[") == -1 && !zeroConstructor(myClass) && !isFinal(myClass)) {
             setImport("static org.mockito.Mockito.mock");
+            setImport("org.mockito.Answers");
             setImport(myClass.getName());
 
             List<String> mockVoWhenList = new ArrayList<>(10);
@@ -899,11 +929,11 @@ public class WwGenTest {
                 }
             }
             if (mockVoWhenList.isEmpty()) {
-                defaultMap.put(myClass.getName(), "return mock(" + myClass.getSimpleName() + ".class);");
+                defaultMap.put(myClass.getName(), "return mock(" + myClass.getSimpleName() + ".class, Mockito.RETURNS_DEEP_STUBS);");
             } else {
                 mockVoWhenList.add("return vo;");
                 defaultMap.put(myClass.getSimpleName(), myClass.getSimpleName() +
-                        " vo = mock(" + myClass.getSimpleName() + ".class);\n" +
+                        " vo = mock(" + myClass.getSimpleName() + ".class, Answers.RETURNS_SMART_NULLS);\n" +
                         String.join("\n", mockVoWhenList));
             }
             return true;
@@ -918,6 +948,10 @@ public class WwGenTest {
         return false;
     }
 
+    private Boolean isFinal(Class aClass) {
+        return Modifier.isFinal(aClass.getModifiers());
+    }
+
     private Boolean zeroConstructor(Class aClass) {
         for (Constructor item : aClass.getDeclaredConstructors()) {
             if (item.getParameterTypes().length == 0) {
@@ -928,6 +962,7 @@ public class WwGenTest {
     }
 
     Set<String> importSet = new HashSet<>(16);
+
     private void setImport(String name) {
         if (!isInit) {
             return;
@@ -938,6 +973,8 @@ public class WwGenTest {
         }
         if (name.indexOf("java.lang") == 0 && arr.length == 3) {
             return;
+        } else if (name.indexOf("$") != -1) {
+            return;
         } else if (name.indexOf("[") == -1) {
             importSet.add("import " + name + ";");
         } else if (name.indexOf("[]") != -1) {
@@ -947,7 +984,7 @@ public class WwGenTest {
         }
     }
 
-    private String getAttr(Class myClass) throws Exception {
+    private String getAttr(Class myClass) {
         List<String> result = new ArrayList<>(10);
         result.add("'" + serviceName + "':0");
         for (Method method : getMethods(myClass)) {
@@ -960,14 +997,14 @@ public class WwGenTest {
         return "{" + String.join(",", result) + "}";
     }
 
-    private String getVo(Class myClass) throws Exception {
+    private String getVo(Class myClass) {
         List<String> result = new ArrayList<>(10);
         String localType = getType(myClass.getName());
         result.add(localType + " vo = new " + localType + "();\n");
         for (Method method : getMethods(myClass)) {
             Class[] parameter = method.getParameterTypes();
             if (method.getName().length() >= 4 && "set".equals(method.getName().substring(0, 3)) && parameter.length == 1 && fileContent.contains(method.getName().substring(4))) {
-                result.add("vo." + method.getName() + "(" + getDefaultVal(parameter[0].getName())  + ");\n");
+                result.add("vo." + method.getName() + "(" + getDefaultVal(parameter[0].getName()) + ");\n");
             }
         }
         if (!result.isEmpty()) {
@@ -977,7 +1014,7 @@ public class WwGenTest {
         for (Method method : getMethods(myClass)) {
             Class[] parameter = method.getParameterTypes();
             if (method.getName().length() >= 4 && "set".equals(method.getName().substring(0, 3)) && parameter.length == 1) {
-                result.add("vo." + method.getName() + "(" + getDefaultVal(parameter[0].getName())  + ");\n");
+                result.add("vo." + method.getName() + "(" + getDefaultVal(parameter[0].getName()) + ");\n");
                 break;
             }
         }
@@ -1003,9 +1040,12 @@ public class WwGenTest {
         setImport(type);
         String[] arr = type.split("[.]");
         if (arr.length > 0) {
+            if (type.indexOf("$") >= 0) {
+                arr[arr.length - 1] = arr[arr.length - 1].replace("$", ".");
+            }
             return arr[arr.length - 1] + suffix;
         } else {
-            return "";
+            return "Object";
         }
     }
 
@@ -1065,7 +1105,6 @@ public class WwGenTest {
                 break;
             case "java.util.List":
             case "java.util.Collection":
-                setImport("java.util.List");
                 setImport("java.util.ArrayList");
                 result = "new ArrayList<>(10)";
                 break;
@@ -1080,9 +1119,18 @@ public class WwGenTest {
             default:
                 setImport(name);
                 if (defaultMap.get(name) != null) {
-                    result = "get" + getType(name) + "()";
+                    result = getInitVo(name);
+                } else if (newMap.containsKey(name)) {
+                    result = newMap.get(name);
                 } else {
-                    result = "new " + getType(name) + "()";
+                    Class cls = forName(name);
+                    isVo(cls);
+                    if (defaultMap.get(name) != null) {
+                        result = getInitVo(name);
+                    } else {
+                        newMap.put(name, "new " + getType(name) + "()");
+                        result = "new " + getType(name) + "()";
+                    }
                 }
         }
         if (indexArr > 0) {
@@ -1102,6 +1150,16 @@ public class WwGenTest {
             return result;
         }
         return result;
+    }
+
+    private Class forName(String name) {
+        Class cls = null;
+        try {
+            cls = Class.forName(name);
+        } catch (ClassNotFoundException exp) {
+            cls = Object.class;
+        }
+        return cls;
     }
 
     private String getDefaultValue(String name) {
@@ -1155,8 +1213,13 @@ public class WwGenTest {
             return "any()";
         }
         setImport(aClass.getName());
-        setImport(importAny + ".nullable");
-        return "nullable(" + aClass.getSimpleName() + ".class)";
+        if (aClass.getName().indexOf(".") >= 0) {
+            setImport(importAny + ".nullable");
+            return "nullable(" + getType(aClass.getName()) + ".class)";
+        } else {
+            setImport(importAny + ".any");
+            return "any(" + getType(aClass.getName()) + ".class)";
+        }
     }
 
     private static List<String> readFileContent(Class myClass) {
