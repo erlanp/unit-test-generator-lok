@@ -49,6 +49,9 @@ public class WwGenTest {
      */
     private String serviceName = "";
 
+    // 感觉 answer = Answers.RETURNS_DEEP_STUBS 用处不大，先关上
+    private Boolean useAnswers = false;
+
     private Boolean isSuperclass = false;
 
     // 是否生成私有方法的单元测试
@@ -151,7 +154,7 @@ public class WwGenTest {
         if ("".equals(serviceName)) {
             serviceName = name.substring(0, 1).toLowerCase() + name.substring(1);
         }
-        println("package " + myClass.getName().substring(0, myClass.getName().length() - myClass.getSimpleName().length() - 1));
+        println("package " + myClass.getName().substring(0, myClass.getName().length() - myClass.getSimpleName().length() - 1) + ";");
         println("");
 
         setImport("org.mockito.InjectMocks");
@@ -201,8 +204,12 @@ public class WwGenTest {
 
             if (service.getAnnotations().length > 0 && !service.getType().getName().contains("java.") && service.getType().getName().contains(".")) {
                 setImport("static org.mockito.Mockito.mock");
-                setImport("org.mockito.Answers");
-                println("@Mock(answer = Answers.RETURNS_DEEP_STUBS)");
+                if (useAnswers) {
+                    setImport("org.mockito.Answers");
+                    println("@Mock(answer = Answers.RETURNS_DEEP_STUBS)");
+                } else {
+                    println("@Mock");
+                }
                 setImport(service.getType().getName());
                 println("private " + service.getType().getSimpleName() + " " + service.getName() + ";");
                 println("");
@@ -886,13 +893,25 @@ public class WwGenTest {
     }
 
     private Boolean isVo(Class myClass) {
+        if (myClass.isInterface()) {
+            return false;
+        }
         if (myClass.getName().length() >= 9 && "java.lang".equals(myClass.getName().substring(0, 9))) {
             return false;
         }
         List<Method> listMethod = getMethods(myClass);
+
         String defaultValue = getDefaultValue(myClass.getName());
         if (!"null".equals(defaultValue)) {
             return false;
+        }
+
+        for (Method method : listMethod) {
+            Class[] parameter = method.getParameterTypes();
+            if (method.getName().length() > 3 && "set".equals(method.getName().substring(0, 3)) && parameter.length == 1) {
+                defaultMap.put(myClass.getName(), useJson ? getAttr(myClass) : getVo(myClass));
+                return true;
+            }
         }
         if (defaultMap.containsKey(myClass.getName())) {
             return true;
@@ -929,23 +948,25 @@ public class WwGenTest {
                 }
             }
             if (mockVoWhenList.isEmpty()) {
-                defaultMap.put(myClass.getName(), "return mock(" + myClass.getSimpleName() + ".class, Mockito.RETURNS_DEEP_STUBS);");
+                defaultMap.put(myClass.getName(), "return " + getMock(myClass) + ";");
             } else {
                 mockVoWhenList.add("return vo;");
                 defaultMap.put(myClass.getSimpleName(), myClass.getSimpleName() +
-                        " vo = mock(" + myClass.getSimpleName() + ".class, Answers.RETURNS_SMART_NULLS);\n" +
+                        " vo = " + getMock(myClass) + ";\n" +
                         String.join("\n", mockVoWhenList));
             }
             return true;
         }
-        for (Method method : listMethod) {
-            Class[] parameter = method.getParameterTypes();
-            if (method.getName().length() > 3 && "set".equals(method.getName().substring(0, 3)) && parameter.length == 1) {
-                defaultMap.put(myClass.getName(), useJson ? getAttr(myClass) : getVo(myClass));
-                return true;
-            }
-        }
         return false;
+    }
+
+    private String getMock(Class myClass) {
+        if (useAnswers) {
+            setImport("org.mockito.Answers");
+            return "mock(" + myClass.getSimpleName() + ".class, Mockito.RETURNS_DEEP_STUBS)";
+        } else {
+            return "mock(" + myClass.getSimpleName() + ".class)";
+        }
     }
 
     private Boolean isFinal(Class aClass) {
@@ -1032,6 +1053,9 @@ public class WwGenTest {
     }
 
     private String getType(String type) {
+        if (type.indexOf(";") != -1) {
+            type = type.substring(2, type.indexOf(";"));
+        }
         int index = type.indexOf("<");
         String suffix = (type.indexOf("[") > 0 && index > 0) ? "[]" : "";
         if (index > 0) {
@@ -1127,6 +1151,9 @@ public class WwGenTest {
                     isVo(cls);
                     if (defaultMap.get(name) != null) {
                         result = getInitVo(name);
+                    } else if (cls.isInterface()) {
+                        newMap.put(name, getMock(cls));
+                        result = getMock(cls);
                     } else {
                         newMap.put(name, "new " + getType(name) + "()");
                         result = "new " + getType(name) + "()";
