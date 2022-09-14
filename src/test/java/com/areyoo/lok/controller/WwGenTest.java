@@ -37,7 +37,6 @@ import org.springframework.util.ObjectUtils;
  *
  * @author xusong
  */
-@ExtendWith(MockitoExtension.class)
 public class WwGenTest {
     /**
      * java文件夹， 用于生成测试的 when代码 可以自定义 比如 D:/java/lok/target/test-classes/../../src/
@@ -763,6 +762,7 @@ public class WwGenTest {
                 defString = getType(returnType) + " result = ";
                 assertString = "Assert.assertTrue(result == " + getDefaultVal(returnType) + ");";
             } else if (returnType.indexOf("java.util.List") == 0) {
+                setImport("java.util.List");
                 defString = "List result = ";
                 assertString = "Assert.assertTrue(result != null && result.toString().indexOf(\"[\") == 0);";
             } else {

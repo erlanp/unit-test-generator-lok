@@ -1,4 +1,7 @@
 # unit-test-generator-lok
  unit-test-generator-lok
  
-±¾ÏîÄ¿ÊÇ»ùÓÚspring boot µÄ junit Éú³É unit test ´úÂëµÄ¼òµ¥³ÌĞò
+æœ¬é¡¹ç›®æ˜¯åŸºäºspring boot çš„ junit ç”Ÿæˆ unit test ä»£ç çš„ç®€å•ç¨‹åº
+ä¸»è¦æ˜¯WwGenTest è¿™ä¸ªå•æ–‡ä»¶ç¨‹åº
+
+[bilibiliçš„æ¼”ç¤ºè§†é¢‘ https://www.bilibili.com/video/BV1Aa411g7v7](https://www.bilibili.com/video/BV1Aa411g7v7)
