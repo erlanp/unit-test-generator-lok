@@ -51,6 +51,9 @@ public class WwGenTest {
     // 是否生成私有方法的单元测试
     private Boolean genPrivateMethod = false;
 
+    // 测试文件在同一个包
+    private Boolean samePackage = true;
+
     // 是否使用json 初始化对象
     private Boolean useJson = false;
 
@@ -153,8 +156,9 @@ public class WwGenTest {
         if ("".equals(serviceName)) {
             serviceName = name.substring(0, 1).toLowerCase() + name.substring(1);
         }
-        println("package " + myClass.getName().substring(0,
-                myClass.getName().length() - myClass.getSimpleName().length() - 1) + ";");
+        String currPackage = myClass.getName().substring(0,
+                myClass.getName().length() - myClass.getSimpleName().length() - 1);
+        println("package " + currPackage + ";");
         println("");
 
         setImport("org.mockito.InjectMocks");
@@ -172,6 +176,8 @@ public class WwGenTest {
             String[] arr = importStr.split("[.]");
             if (arr.length == 1 || (importStr.indexOf("java.lang") == 0 && arr.length == 3)) {
                 continue;
+            } else if (samePackage && importStr.equals(currPackage + "." + getType(importStr))) {
+                continue;
             }
             println("import " + importStr + ";");
         }
@@ -181,7 +187,7 @@ public class WwGenTest {
         List<String> lineList = readFileContent(myClass);
         lineList.forEach((str) -> {
             if (str.length() > 7 && str.substring(0, 7).equals("import ")) {
-                setImport(str.substring(7, str.length() - 1));
+                 setImport(str.substring(7, str.length() - 1));
             }
         });
         fileContent = String.join("\n", lineList);
@@ -376,13 +382,16 @@ public class WwGenTest {
             for (String className : importSet) {
                 String typeName = getType(className);
                 if (!className.contains("static ") && (line.contains("(" + typeName + ")")
+                        || line.contains("(" + typeName + "<")
                         || line.contains(" " + typeName + ".valueOf(")
                         || line.contains(".get" + typeName + "("))) {
                     putString.get(methodName).put(str, forName(className));
                     return;
                 }
             }
-            putString.get(methodName).put(str, String.class);
+            if (!putString.get(methodName).containsKey(str)) {
+                putString.get(methodName).put(str, String.class);
+            }
         }
     }
 
@@ -429,6 +438,11 @@ public class WwGenTest {
         Set<Method> set = new HashSet<>(15);
         for (Method method : myClass.getMethods()) {
             set.add(method);
+        }
+        for (Method method : myClass.getDeclaredMethods()) {
+            if (samePackage && Modifier.isPublic(method.getModifiers())) {
+                set.add(method);
+            }
         }
         if (!myClass.getSuperclass().getName().contains("java.")) {
             for (Method method : getSuperMethods(myClass.getSuperclass())) {
@@ -835,7 +849,7 @@ public class WwGenTest {
                     }
                     println(parameter[i].getName() + ".put(" + String.join(", ", tmpList) + ");");
                     if (("interface java.util.Map".equals(genericParameterTypes[i].toString()) || genericParameterTypes[i].toString().indexOf("java.util.Map<java.lang.String,") == 0)
-                            && !putString.get(method.getName()).isEmpty()) {
+                            && putString.containsKey(method.getName()) && !putString.get(method.getName()).isEmpty()) {
                         int finalI = i;
                         putString.get(method.getName()).forEach((key, value) -> {
                             if ("\"{}\"".equals(tmpList.get(1)) || "new Object()".equals(tmpList.get(1))) {
