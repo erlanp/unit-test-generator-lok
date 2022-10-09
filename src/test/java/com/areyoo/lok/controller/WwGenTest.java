@@ -440,7 +440,7 @@ public class WwGenTest {
             set.add(method);
         }
         for (Method method : myClass.getDeclaredMethods()) {
-            if (samePackage && Modifier.isPublic(method.getModifiers())) {
+            if (samePackage && Modifier.isProtected(method.getModifiers())) {
                 set.add(method);
             }
         }
@@ -1290,18 +1290,20 @@ public class WwGenTest {
     }
 
     private String getAny(Class aClass) {
-        String name = aClass.getName();
-        if ("java.lang.Object".equals(name)) {
+        String name = getType(aClass.getName());
+        char first = name.toCharArray()[0];
+
+        if ("Object".equals(name)) {
             setImport(importAny + ".any");
             return "any()";
-        }
-        setImport(aClass.getName());
-        if (aClass.getName().indexOf(".") >= 0) {
+        } else if (65 <= first && first >= 90) {
+            // 大写头说明是类
             setImport(importAny + ".nullable");
-            return "nullable(" + getType(aClass.getName()) + ".class)";
+            setImport(aClass.getName());
+            return "nullable(" + name + ".class)";
         } else {
             setImport(importAny + ".any");
-            return "any(" + getType(aClass.getName()) + ".class)";
+            return "any(" + name + ".class)";
         }
     }
 
