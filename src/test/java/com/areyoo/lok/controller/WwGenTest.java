@@ -187,21 +187,20 @@ public class WwGenTest {
         List<String> lineList = readFileContent(myClass);
         lineList.forEach((str) -> {
             if (str.length() > 7 && str.substring(0, 7).equals("import ")) {
-                 setImport(str.substring(7, str.length() - 1));
+                setImport(str.substring(7, str.length() - 1));
             }
         });
         fileContent = String.join("\n", lineList);
 
         Map<String, List<String>> map = new HashMap<>(16);
 
-        if (!"".equals(author)) {
-            println("/**\n" +
-                    " * " + name + " UT\n" +
-                    " *" + "\n" +
-                    " * @author " + author + "\n" +
-                    " * @date " + new Date() + "\n" +
-                    " */");
-        }
+        println("/**\n" +
+                " * " + name + " UT\n" +
+                " *" + "\n" +
+                " * @author " + author + "\n" +
+                " * @date " + new Date() + "\n" +
+                " */");
+
         if (baseTest == null) {
             println("public class " + name + "Test {");
         } else {
@@ -246,8 +245,8 @@ public class WwGenTest {
                         number++;
                     }
                 }
-            } else if (service.getAnnotations().length > 0 && (service.getType().getName().contains("java.") || !service.getType().getName().contains("."))) {
-                // 如果有注解及类型是标量
+            } else if (service.getType().getName().contains("java.") || !service.getType().getName().contains(".")) {
+                // 如果有类型是标量
                 String setFieldStr = "ReflectionTestUtils.setField(" + serviceName + ", \"" + service.getName() +
                         "\", " + getDefaultVal(service.getType()) + ");";
                 valueList.add(setFieldStr);
@@ -256,11 +255,11 @@ public class WwGenTest {
         if (valueList.size() > 0) {
             // 生成反射给成员变量赋值的代码
             if (junit5) {
-                setImport("org.junit.jupiter.api.BeforeAll");
-                println("@BeforeAll");
+                setImport("org.junit.jupiter.api.BeforeEach");
+                println("@BeforeEach");
             } else {
-                setImport("org.junit.BeforeClass");
-                println("@BeforeClass");
+                setImport("org.junit.Before");
+                println("@Before");
             }
             println("public void beforeInit() {");
             valueList.forEach((value) -> {
@@ -423,7 +422,7 @@ public class WwGenTest {
             set.add(field);
             setType.add(field.getType());
         }
-        if (!myClass.getSuperclass().getName().contains("java.")) {
+        if (myClass.getSuperclass() != null && !myClass.getSuperclass().getName().contains("java.")) {
             for (Field field : getDeclaredFields(myClass.getSuperclass())) {
                 if (!setType.contains(field.getType())) {
                     set.add(field);
@@ -444,7 +443,7 @@ public class WwGenTest {
                 set.add(method);
             }
         }
-        if (!myClass.getSuperclass().getName().contains("java.")) {
+        if (myClass.getSuperclass() != null && !myClass.getSuperclass().getName().contains("java.")) {
             for (Method method : getSuperMethods(myClass.getSuperclass())) {
                 set.add(method);
             }
@@ -457,7 +456,7 @@ public class WwGenTest {
         for (Method method : myClass.getDeclaredMethods()) {
             set.add(method);
         }
-        if (!myClass.getSuperclass().getName().contains("java.")) {
+        if (myClass.getSuperclass() != null && !myClass.getSuperclass().getName().contains("java.")) {
             for (Method method : getDeclaredMethods(myClass.getSuperclass())) {
                 set.add(method);
             }
@@ -556,7 +555,34 @@ public class WwGenTest {
                 return getDoReturnWhen(serviceMethod, field, same);
             }
         }
+        if (getStrCount(fileContent, serviceName + "." + serviceMethod.getName() + "(") >= 2) {
+            // 如果有多个相同的函数使用，则用 doAnswer
+            setImport("org.mockito.invocation.InvocationOnMock");
+            setImport("static org.mockito.Mockito.doAnswer");
+            return setLine + "\ndoAnswer((InvocationOnMock invocation) -> {\n" +
+                    "            return then" + number + ";\n" +
+                    "        }).when(" + serviceName + ")." + methodParame(serviceMethod) + ";";
+        }
         return setLine + "\nwhen(" + serviceName + "." + methodParame(serviceMethod) + ").thenReturn(then" + number + ");";
+    }
+
+    public static int getStrCount(String source, String sub) {
+        int count = 0;
+
+        int fromIndex = 0;
+        while (true) {
+            fromIndex = source.indexOf(sub, fromIndex + 1);
+            if (fromIndex != -1) {
+                count++;
+                if (count >= 2) {
+                    break;
+                }
+            } else {
+                break;
+            }
+        }
+
+        return count;
     }
 
     private String getInitVo(String className) {
@@ -746,7 +772,7 @@ public class WwGenTest {
             }
             println((junit5 ? "@BeforeEach" : "@Before") + "\n" +
                     "    public void before() {\n" +
-                    "        MockitoAnnotations.initMocks(this);\n" +
+                    "        MockitoAnnotations.openMocks(this);\n" +
                     "    }");
         }
         for (int k = 0; k < allMethod.size(); k++) {
@@ -885,6 +911,7 @@ public class WwGenTest {
             }
 
             if ("void".equals(returnType)) {
+                setImport(importException.getName());
                 println("try {");
                 // 定义常用的 Exception
                 println("} catch (" + importException.getSimpleName() + " exp) {");
@@ -1296,7 +1323,7 @@ public class WwGenTest {
         if ("Object".equals(name)) {
             setImport(importAny + ".any");
             return "any()";
-        } else if (65 <= first && first >= 90) {
+        } else if (65 <= first && first <= 90) {
             // 大写头说明是类
             setImport(importAny + ".nullable");
             setImport(aClass.getName());
@@ -1333,7 +1360,7 @@ public class WwGenTest {
                 }
             }
         }
-        if (!myClass.getSuperclass().getName().contains("java.")) {
+        if (myClass.getSuperclass() != null && !myClass.getSuperclass().getName().contains("java.")) {
             sbf.addAll(readFileContent(myClass.getSuperclass()));
         }
         return sbf;
