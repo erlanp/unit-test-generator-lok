@@ -61,6 +61,8 @@ public class WwGenTest {
 
     private String author = "";
 
+    private String copyright = "";
+
     // 是否使用 junit5
     private Boolean junit5 = false;
 
@@ -158,10 +160,12 @@ public class WwGenTest {
         }
         String currPackage = myClass.getName().substring(0,
                 myClass.getName().length() - myClass.getSimpleName().length() - 1);
+        println("/*\n" +
+                " * Copyright" + copyright + "\n" +
+                " *");
         println("package " + currPackage + ";");
         println("");
 
-        setImport("org.mockito.InjectMocks");
         setImport("org.mockito.Mock");
         setImport("org.junit.Assert");
         if (junit5) {
@@ -208,8 +212,14 @@ public class WwGenTest {
             println("public class " + name + "Test extends " + baseTest.getSimpleName() + " {");
         }
 
+        setImport("org.mockito.InjectMocks");
         println("@InjectMocks");
-        println("private " + myClass.getSimpleName() + " " + serviceName + ";");
+        if (!Modifier.isAbstract(myClass.getModifiers())) {
+            println("private " + myClass.getSimpleName() + " " + serviceName + ";");
+        } else {
+            println("private " + myClass.getSimpleName() + " " + serviceName + "= new " + myClass.getSimpleName() +
+                    "() {};");
+        }
         println("");
         int number = 0;
 
@@ -249,9 +259,11 @@ public class WwGenTest {
                 // 如果有类型是标量
                 String setFieldStr = "ReflectionTestUtils.setField(" + serviceName + ", \"" + service.getName() +
                         "\", " + getDefaultVal(service.getType()) + ");";
+                setImport("org.springframework.test.util.ReflectionTestUtils");
                 valueList.add(setFieldStr);
             }
         }
+
         if (valueList.size() > 0) {
             // 生成反射给成员变量赋值的代码
             if (junit5) {
@@ -398,7 +410,7 @@ public class WwGenTest {
     private Map<String, Set<String>> methodMap(Map<String, Set<String>> whenMethod) {
         Map<String, Set<String>> result = new HashMap<>(16);
         for (Map.Entry<String, Set<String>> entry : whenMethod.entrySet()) {
-            result.put(entry.getKey(), methodSet(entry.getKey(), whenMethod, 99));
+            result.put(entry.getKey(), methodSet(entry.getKey(), whenMethod, 23));
         }
         return result;
     }
@@ -844,6 +856,7 @@ public class WwGenTest {
                 assertString = "Assert.assertTrue(result != null);";
             }
             String joinStr = metaType.size() > 0 ? ", " : "";
+
             if (!resultList.contains(method)) {
 
                 String superclassStr = isSuperclass ? ".getSuperclass()" : "";
@@ -854,7 +867,8 @@ public class WwGenTest {
                 println(initMethod);
                 println("method.setAccessible(true);");
                 println(defString + "method.invoke(" + serviceName + joinStr + String.join(", ", meta) + ");");
-
+            } else if (Modifier.isStatic(method.getModifiers()) && !Modifier.isAbstract(myClass.getModifiers())) {
+                println(defString + myClass.getSimpleName() + "." + method.getName() + "(" + String.join(", ", meta) + ");");
             } else {
                 println(defString + serviceName + "." + method.getName() + "(" + String.join(", ", meta) + ");");
             }
