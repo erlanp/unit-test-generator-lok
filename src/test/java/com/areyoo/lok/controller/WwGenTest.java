@@ -162,7 +162,7 @@ public class WwGenTest {
                 myClass.getName().length() - myClass.getSimpleName().length() - 1);
         println("/*\n" +
                 " * Copyright" + copyright + "\n" +
-                " *");
+                " */");
         println("package " + currPackage + ";");
         println("");
 
@@ -867,10 +867,8 @@ public class WwGenTest {
                 println(initMethod);
                 println("method.setAccessible(true);");
                 println(defString + "method.invoke(" + serviceName + joinStr + String.join(", ", meta) + ");");
-            } else if (Modifier.isStatic(method.getModifiers()) && !Modifier.isAbstract(myClass.getModifiers())) {
-                println(defString + myClass.getSimpleName() + "." + method.getName() + "(" + String.join(", ", meta) + ");");
             } else {
-                println(defString + serviceName + "." + method.getName() + "(" + String.join(", ", meta) + ");");
+                println(defString + invokeString(resultList, myClass, method, meta));
             }
 
             Boolean add = false;
@@ -906,7 +904,7 @@ public class WwGenTest {
                 if (!resultList.contains(method)) {
                     println("method.invoke(" + serviceName + joinStr + String.join(", ", meta) + ");");
                 } else {
-                    println(serviceName + "." + method.getName() + "(" + String.join(", ", meta) + ");");
+                    println(invokeString(resultList, myClass, method, meta));
                 }
             }
 
@@ -920,7 +918,7 @@ public class WwGenTest {
                 if (!resultList.contains(method)) {
                     println("method.invoke(" + serviceName + joinStr + String.join(", ", meta) + ");");
                 } else {
-                    println(serviceName + "." + method.getName() + "(" + String.join(", ", meta) + ");");
+                    println(invokeString(resultList, myClass, method, meta));
                 }
             }
 
@@ -961,6 +959,14 @@ public class WwGenTest {
                         + entry.getValue() + "\n}";
             }
             println(fnStr);
+        }
+    }
+
+    private String invokeString(List<Method> resultList, Class myClass, Method method, List<String> meta) {
+        if (Modifier.isStatic(method.getModifiers()) && !Modifier.isAbstract(myClass.getModifiers())) {
+            return myClass.getSimpleName() + "." + method.getName() + "(" + String.join(", ", meta) + ");";
+        } else {
+            return serviceName + "." + method.getName() + "(" + String.join(", ", meta) + ");";
         }
     }
 
