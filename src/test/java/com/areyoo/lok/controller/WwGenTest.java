@@ -1,15 +1,20 @@
 package com.areyoo.lok.controller;
 
 import org.junit.jupiter.api.Test;
-import org.springframework.util.ObjectUtils;
 
+import java.awt.*;
+import java.awt.datatransfer.Clipboard;
+import java.awt.datatransfer.StringSelection;
+import java.awt.datatransfer.Transferable;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.lang.annotation.Annotation;
 import java.lang.reflect.AnnotatedType;
+import java.lang.reflect.Array;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -19,13 +24,18 @@ import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * WwGenTest
@@ -79,7 +89,7 @@ public class WwGenTest {
     private String outputFile = "";
 
     // 用于不确定的泛型 比如 'com.areyoo.lok.service.api.WwService|T': String.class
-    private Map<String, Class> genericMap = new HashMap<>(15);
+    private Map<String, Class> genericMap = new HashMap<>(16);
 
     // 用于生成测试类继承的类
     private Class baseTest = null;
@@ -95,6 +105,7 @@ public class WwGenTest {
         // genericMap.put("com.areyoo.lok.service.api.WwService|T", List.class);
         // 生成当前类的单元测试
 
+        // genCode(forName("com.areyoo.lok.controller.WwController"), false);
         genCode(WwController.class, false);
 
         // 生成父类的单元测试
@@ -128,6 +139,12 @@ public class WwGenTest {
     private void genCode(Class myClass, Boolean isSuperclass) throws Exception {
         genCode(myClass, isSuperclass, true);
         genCode(myClass, isSuperclass, false);
+
+        // 写入剪切板
+        Clipboard clip = Toolkit.getDefaultToolkit().getSystemClipboard();
+        Transferable tText = new StringSelection(stringBuffer.toString());
+        clip.setContents(tText, null);
+
         if (!"".equals(outputFile)) {
             writeFileWithBufferedWriter();
         }
@@ -156,7 +173,7 @@ public class WwGenTest {
         this.isSuperclass = isSuperclass;
         String name = getType(myClass.getName());
         if ("".equals(serviceName)) {
-            serviceName = name.substring(0, 1).toLowerCase() + name.substring(1);
+            serviceName = name.substring(0, 1).toLowerCase(Locale.ENGLISH) + name.substring(1);
         }
         String currPackage = myClass.getName().substring(0,
                 myClass.getName().length() - myClass.getSimpleName().length() - 1);
@@ -217,7 +234,7 @@ public class WwGenTest {
         if (!Modifier.isAbstract(myClass.getModifiers())) {
             println("private " + myClass.getSimpleName() + " " + serviceName + ";");
         } else {
-            println("private " + myClass.getSimpleName() + " " + serviceName + "= new " + myClass.getSimpleName() +
+            println("private " + myClass.getSimpleName() + " " + serviceName + " = new " + myClass.getSimpleName() +
                     "() {};");
         }
         println("");
@@ -255,16 +272,35 @@ public class WwGenTest {
                         number++;
                     }
                 }
-            } else if (service.getType().getName().contains("java.") || !service.getType().getName().contains(".")) {
-                // 如果有类型是标量
-                String setFieldStr = "ReflectionTestUtils.setField(" + serviceName + ", \"" + service.getName() +
-                        "\", " + getDefaultVal(service.getType()) + ");";
+            } else if (!Modifier.isStatic(service.getModifiers()) && !Modifier.isFinal(service.getModifiers())
+                    && (service.getType().getName().contains("java.") ||
+                    (!service.getType().getName().contains(".") && service.getAnnotations().length > 0))) {
+                // 如果有类型是java基类 或者是标量且有注解
+                String setFieldStr = "if (ReflectionTestUtils.getField(" + serviceName + ", \"" + service.getName() +
+                        "\") != null) {\n" + "            ReflectionTestUtils.setField(" + serviceName + ", \"" + service.getName() +
+                        "\", " + getDefaultVal(service.getType()) + ");\n        }";
                 setImport("org.springframework.test.util.ReflectionTestUtils");
                 valueList.add(setFieldStr);
             }
         }
 
-        if (valueList.size() > 0) {
+        if (baseTest == null) {
+            setImport("org.mockito.MockitoAnnotations");
+            if (junit5) {
+                setImport("org.junit.jupiter.api.BeforeEach");
+            } else {
+                setImport("org.junit.Before");
+            }
+            println((junit5 ? "@BeforeEach" : "@Before") + "\n" +
+                    "    public void before() {\n" +
+                    "        MockitoAnnotations.openMocks(this);\n");
+            if (valueList.size() > 0) {
+                valueList.forEach((value) -> {
+                    println("        " + value);
+                });
+            }
+            println("    }");
+        } else if (valueList.size() > 0) {
             // 生成反射给成员变量赋值的代码
             if (junit5) {
                 setImport("org.junit.jupiter.api.BeforeEach");
@@ -289,9 +325,9 @@ public class WwGenTest {
         Set<Method> methods = getDeclaredMethods(myClass, true);
 
         for (Method method : methods) {
-            whenMap.put(method.getName(), new HashSet<>(15));
-            whenMethod.put(method.getName(), new HashSet<>(15));
-            putString.put(method.getName(), new HashMap<>(15));
+            whenMap.put(method.getName(), new HashSet<>(16));
+            whenMethod.put(method.getName(), new HashSet<>(16));
+            putString.put(method.getName(), new HashMap<>(16));
         }
         String methodName = "";
         if (!"".equals(fileContent)) {
@@ -428,8 +464,8 @@ public class WwGenTest {
     }
 
     private Set<Field> getDeclaredFields(Class myClass) {
-        Set<Field> set = new HashSet<>(15);
-        Set<Type> setType = new HashSet<>(15);
+        Set<Field> set = new HashSet<>(16);
+        Set<Type> setType = new HashSet<>(16);
         for (Field field : myClass.getDeclaredFields()) {
             set.add(field);
             setType.add(field.getType());
@@ -445,26 +481,8 @@ public class WwGenTest {
         return set;
     }
 
-    private Set<Method> getSuperMethods(Class myClass) {
-        Set<Method> set = new HashSet<>(15);
-        for (Method method : myClass.getMethods()) {
-            set.add(method);
-        }
-        for (Method method : myClass.getDeclaredMethods()) {
-            if (samePackage && Modifier.isProtected(method.getModifiers())) {
-                set.add(method);
-            }
-        }
-        if (myClass.getSuperclass() != null && !myClass.getSuperclass().getName().contains("java.")) {
-            for (Method method : getSuperMethods(myClass.getSuperclass())) {
-                set.add(method);
-            }
-        }
-        return set;
-    }
-
     private Set<Method> getDeclaredMethods(Class myClass) {
-        Set<Method> set = new HashSet<>(15);
+        Set<Method> set = new HashSet<>(16);
         for (Method method : myClass.getDeclaredMethods()) {
             set.add(method);
         }
@@ -478,9 +496,9 @@ public class WwGenTest {
 
     private Set<Method> getDeclaredMethods(Class myClass, Boolean base) {
         Method[] methods = myClass.getDeclaredMethods();
-        Set<Method> set = new HashSet<>(15);
+        Set<Method> set = new HashSet<>(16);
         for (Method method : methods) {
-            if (base || method.toString().contains("public ")) {
+            if (base || Modifier.isPublic(method.getModifiers())) {
                 set.add(method);
             }
         }
@@ -768,28 +786,14 @@ public class WwGenTest {
 
     private void methods(Class myClass, Map<String, Set<List<String>>> whenMap,
                          Map<String, Map<String, Class>> putString) throws Exception {
-        Set<Method> publicMethod = getSuperMethods(myClass);
-
         List<Method> allMethod = new ArrayList<>(getDeclaredMethods(myClass));
-        List<Method> resultList = new ArrayList<>(publicMethod);
 
         Map<String, Integer> methodCount = new HashMap<>();
 
-        if (baseTest == null) {
-            setImport("org.mockito.MockitoAnnotations");
-            if (junit5) {
-                setImport("org.junit.jupiter.api.BeforeEach");
-            } else {
-                setImport("org.junit.Before");
-            }
-            println((junit5 ? "@BeforeEach" : "@Before") + "\n" +
-                    "    public void before() {\n" +
-                    "        MockitoAnnotations.openMocks(this);\n" +
-                    "    }");
-        }
         for (int k = 0; k < allMethod.size(); k++) {
             Method method = allMethod.get(k);
-            if (!resultList.contains(method) && !genPrivateMethod) {
+
+            if (Modifier.isPrivate(method.getModifiers()) && !genPrivateMethod) {
                 continue;
             }
 
@@ -848,7 +852,7 @@ public class WwGenTest {
                 defString = "List result = ";
                 assertString = "Assert.assertTrue(result != null && result.toString().indexOf(\"[\") == 0);";
             } else {
-                if (!resultList.contains(method)) {
+                if (Modifier.isPrivate(method.getModifiers())) {
                     defString = "Object result = ";
                 } else {
                     defString = getType(returnType) + " result = ";
@@ -857,7 +861,7 @@ public class WwGenTest {
             }
             String joinStr = metaType.size() > 0 ? ", " : "";
 
-            if (!resultList.contains(method)) {
+            if (Modifier.isPrivate(method.getModifiers())) {
 
                 String superclassStr = isSuperclass ? ".getSuperclass()" : "";
                 setImport("java.lang.reflect.Method");
@@ -868,7 +872,7 @@ public class WwGenTest {
                 println("method.setAccessible(true);");
                 println(defString + "method.invoke(" + serviceName + joinStr + String.join(", ", meta) + ");");
             } else {
-                println(defString + invokeString(resultList, myClass, method, meta));
+                println(defString + invokeString(myClass, method, meta));
             }
 
             Boolean add = false;
@@ -901,10 +905,10 @@ public class WwGenTest {
                 }
             }
             if (add) {
-                if (!resultList.contains(method)) {
+                if (Modifier.isPrivate(method.getModifiers())) {
                     println("method.invoke(" + serviceName + joinStr + String.join(", ", meta) + ");");
                 } else {
-                    println(invokeString(resultList, myClass, method, meta));
+                    println(invokeString(myClass, method, meta));
                 }
             }
 
@@ -915,10 +919,10 @@ public class WwGenTest {
                     println(String.join("\n", oneList));
                 }
 
-                if (!resultList.contains(method)) {
+                if (Modifier.isPrivate(method.getModifiers())) {
                     println("method.invoke(" + serviceName + joinStr + String.join(", ", meta) + ");");
                 } else {
-                    println(invokeString(resultList, myClass, method, meta));
+                    println(invokeString(myClass, method, meta));
                 }
             }
 
@@ -962,7 +966,7 @@ public class WwGenTest {
         }
     }
 
-    private String invokeString(List<Method> resultList, Class myClass, Method method, List<String> meta) {
+    private String invokeString(Class myClass, Method method, List<String> meta) {
         if (Modifier.isStatic(method.getModifiers()) && !Modifier.isAbstract(myClass.getModifiers())) {
             return myClass.getSimpleName() + "." + method.getName() + "(" + String.join(", ", meta) + ");";
         } else {
@@ -971,8 +975,8 @@ public class WwGenTest {
     }
 
     private String getMethodCountName(Integer count) {
-        String[] arr = {"", "Two", "Three", "Four"};
-        if (count >= 4) {
+        String[] arr = {"", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten"};
+        if (count >= arr.length) {
             return "";
         } else {
             return arr[count];
@@ -1001,18 +1005,19 @@ public class WwGenTest {
         if (myClass.isInterface()) {
             return false;
         }
-        if (myClass.getName().length() >= 9 && "java.lang".equals(myClass.getName().substring(0, 9))) {
+        if (myClass.getName() != null && myClass.getName().startsWith("java.lang")) {
             return false;
         }
-        List<Method> listMethod = getMethods(myClass);
 
         String defaultValue = getDefaultValue(myClass.getName());
         if (!"null".equals(defaultValue)) {
             return false;
         }
 
+        List<Method> listMethod = getMethods(myClass);
         for (Method method : listMethod) {
             Class[] parameter = method.getParameterTypes();
+
             if (method.getName().length() > 3 && "set".equals(method.getName().substring(0, 3)) && parameter.length == 1) {
                 defaultMap.put(myClass.getName(), useJson ? getAttr(myClass) : getVo(myClass));
                 return true;
@@ -1024,17 +1029,6 @@ public class WwGenTest {
         for (Method method : listMethod) {
             Class[] parameter = method.getParameterTypes();
             if (!useJson && Modifier.isStatic(method.getModifiers()) && myClass.getName().equals(method.getReturnType().getName())) {
-                if (parameter.length == 1) {
-                    defaultMap.put(myClass.getName(), "return " + myClass.getSimpleName() + "." + method.getName() +
-                            "(" + getDefaultVal(parameter[0]) + ");");
-                    return true;
-                }
-            }
-        }
-
-        for (Method method : listMethod) {
-            Class[] parameter = method.getParameterTypes();
-            if (!useJson && Modifier.isStatic(method.getModifiers()) && myClass.getName().equals(method.getReturnType().getName())) {
                 if (parameter.length == 0) {
                     defaultMap.put(myClass.getName(), "return " + myClass.getSimpleName() + "." + method.getName() +
                             "();");
@@ -1042,9 +1036,17 @@ public class WwGenTest {
                 }
             }
         }
+        for (Method method : listMethod) {
+            Class[] parameter = method.getParameterTypes();
+            if (!useJson && Modifier.isStatic(method.getModifiers()) && myClass.getName().equals(method.getReturnType().getName())) {
+                if (parameter.length == 1) {
+                    defaultMap.put(myClass.getName(), "return " + myClass.getSimpleName() + "." + method.getName() +
+                            "(" + getDefaultVal(parameter[0]) + ");");
+                    return true;
+                }
+            }
+        }
         if (!useJson && myClass.getName().indexOf("[") == -1 && !zeroConstructor(myClass) && !isFinal(myClass)) {
-            setImport("static org.mockito.Mockito.mock");
-            setImport("org.mockito.Answers");
             setImport(myClass.getName());
 
             List<String> mockVoWhenList = new ArrayList<>(10);
@@ -1071,8 +1073,9 @@ public class WwGenTest {
     }
 
     private String getMock(Class myClass) {
+        setImport("static org.mockito.Mockito.mock");
         if (useAnswers) {
-            setImport("org.mockito.Answers");
+            setImport("org.mockito.Mockito");
             return "mock(" + myClass.getSimpleName() + ".class, Mockito.RETURNS_DEEP_STUBS)";
         } else {
             return "mock(" + myClass.getSimpleName() + ".class)";
@@ -1095,18 +1098,26 @@ public class WwGenTest {
     Set<String> importSet = new HashSet<>(16);
 
     private void setImport(String name) {
-        if (!isInit) {
+        if (!isInit || importSet.contains(name)) {
             return;
         }
-        if (name.indexOf("$") != -1) {
-            return;
-        } else if (name.indexOf("[") == -1) {
-            importSet.add(name);
-        } else if (name.indexOf("[]") != -1) {
-            setImport(name.substring(0, name.indexOf("[]")));
-        } else if (name.indexOf(";") != -1) {
-            setImport(name.substring(2, name.indexOf(";")));
+        List<StringBuffer> list = new ArrayList<>(10);
+        list.add(new StringBuffer());
+        int current = 0;
+        for (char item : name.toCharArray()) {
+            if ("$[]<>,;".indexOf(item) != -1) {
+                current++;
+                list.add(new StringBuffer());
+            } else {
+                list.get(current).append(item);
+            }
         }
+        list.forEach((item) -> {
+            String className = item.toString().trim();
+            if (!"".equals(className)) {
+                importSet.add(item.toString().trim());
+            }
+        });
     }
 
     private String getAttr(Class myClass) {
@@ -1115,7 +1126,7 @@ public class WwGenTest {
         for (Method method : getMethods(myClass)) {
             Class[] parameter = method.getParameterTypes();
             if (method.getName().length() > 3 && "set".equals(method.getName().substring(0, 3)) && parameter.length == 1) {
-                result.add("'" + (method.getName().substring(3, 4).toLowerCase()) + method.getName().substring(4) +
+                result.add("'" + (method.getName().substring(3, 4).toLowerCase(Locale.ENGLISH)) + method.getName().substring(4) +
                         "':" + getDefaultValue(parameter[0].getName()));
             }
         }
@@ -1129,22 +1140,41 @@ public class WwGenTest {
         for (Method method : getMethods(myClass)) {
             Class[] parameter = method.getParameterTypes();
             if (method.getName().length() >= 4 && "set".equals(method.getName().substring(0, 3)) && parameter.length == 1
-                    && fileContent.contains(method.getName().substring(4))) {
+                    && !getAnnotations(method.getAnnotations()).contains("java.lang.Deprecated")
+                    && fileContent.contains(method.getName().substring(4) + "(")) {
                 result.add("vo." + method.getName() + "(" + getDefaultVal(parameter[0].getName()) + ");\n");
             }
         }
-        if (!result.isEmpty()) {
+        if (result.size() > 1) {
             return String.join("", result) + "return vo;";
         }
         // 如果没有匹配，就选第一个赋值
         for (Method method : getMethods(myClass)) {
             Class[] parameter = method.getParameterTypes();
-            if (method.getName().length() >= 4 && "set".equals(method.getName().substring(0, 3)) && parameter.length == 1) {
+            if (method.getName().length() >= 4 && "set".equals(method.getName().substring(0, 3)) && parameter.length == 1
+                    && !getAnnotations(method.getAnnotations()).contains("java.lang.Deprecated")) {
                 result.add("vo." + method.getName() + "(" + getDefaultVal(parameter[0].getName()) + ");\n");
                 break;
             }
         }
+        if (result.size() > 1) {
+            return String.join("", result) + "return vo;";
+        }
+        // 如果没有匹配，就选一个参数为空的函数
+        for (Method method : getMethods(myClass)) {
+            Class[] parameter = method.getParameterTypes();
+            if (parameter.length == 0 && !getAnnotations(method.getAnnotations()).contains("java.lang.Deprecated")) {
+                result.add("vo." + method.getName() + "();\n");
+                break;
+            }
+        }
         return String.join("", result) + "return vo;";
+    }
+
+    private List<String> getAnnotations(Annotation[] annotations) {
+        return Arrays.stream(annotations).map((item) -> {
+            return item.annotationType().getName();
+        }).filter(Objects::nonNull).collect(Collectors.toList());
     }
 
     private List<String> getMethodParameterTypes(Method method) throws Exception {
@@ -1162,7 +1192,8 @@ public class WwGenTest {
             type = type.substring(2, type.indexOf(";"));
         }
         int index = type.indexOf("<");
-        String suffix = (type.indexOf("[") > 0 && index > 0) ? "[]" : "";
+        int indexArray = type.indexOf("[");
+        String suffix = (indexArray > 0 && index > 0) ? type.substring(indexArray) : "";
         if (index > 0) {
             type = type.substring(0, index);
         }
@@ -1354,10 +1385,35 @@ public class WwGenTest {
         }
     }
 
+    private static boolean isEmpty(Object obj) {
+        if (obj == null) {
+            return true;
+        }
+
+        if (obj instanceof Optional) {
+            return !((Optional<?>) obj).isPresent();
+        }
+        if (obj instanceof CharSequence) {
+            return ((CharSequence) obj).length() == 0;
+        }
+        if (obj.getClass().isArray()) {
+            return Array.getLength(obj) == 0;
+        }
+        if (obj instanceof Collection) {
+            return ((Collection<?>) obj).isEmpty();
+        }
+        if (obj instanceof Map) {
+            return ((Map<?, ?>) obj).isEmpty();
+        }
+
+        // else
+        return false;
+    }
+
     private static List<String> readFileContent(Class myClass) {
         String fileName = getAbsolutePath(myClass);
         List<String> sbf = new ArrayList<>(10);
-        if (ObjectUtils.isEmpty(fileName)) {
+        if (isEmpty(fileName)) {
             return sbf;
         }
         File file = new File(fileName);
